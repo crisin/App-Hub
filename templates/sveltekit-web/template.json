@@ -1,0 +1,6 @@
+{
+  "name": "SvelteKit Web App",
+  "description": "Web app with SvelteKit and TypeScript",
+  "tags": ["web", "sveltekit", "svelte"],
+  "postCreate": "npm install"
+}

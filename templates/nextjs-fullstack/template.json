@@ -1,0 +1,6 @@
+{
+  "name": "Next.js Full Stack",
+  "description": "Full-stack web app with Next.js App Router and TypeScript",
+  "tags": ["web", "nextjs", "fullstack", "react"],
+  "postCreate": "npm install"
+}

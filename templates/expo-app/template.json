@@ -1,0 +1,6 @@
+{
+  "name": "Expo App",
+  "description": "Local-first mobile app with Expo and React Native",
+  "tags": ["mobile", "react-native", "expo", "local-first"],
+  "postCreate": "npm install"
+}

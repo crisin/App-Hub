@@ -1,0 +1,32 @@
+{
+  "name": "apphub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "App Hub — project management and scaffolding for rapid app prototyping",
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "npm run dev --workspace=@apphub/hub",
+    "build": "npm run build --workspace=@apphub/shared && npm run build --workspace=@apphub/hub && npm run build --workspace=@apphub/cli",
+    "cli": "npm run start --workspace=@apphub/cli",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && svelte-check --workspace packages/hub"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.0",
+    "eslint-plugin-svelte": "^3.17.0",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "prettier-plugin-svelte": "^3.5.1",
+    "svelte-eslint-parser": "^1.6.0",
+    "typescript-eslint": "^8.58.0"
+  }
+}

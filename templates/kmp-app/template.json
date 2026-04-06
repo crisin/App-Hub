@@ -1,0 +1,6 @@
+{
+  "name": "Kotlin Multiplatform App",
+  "description": "Cross-platform mobile app with Kotlin Multiplatform, Compose Multiplatform, and shared business logic for iOS and Android",
+  "tags": ["mobile", "kotlin", "kmp", "ios", "android", "compose-multiplatform"],
+  "postCreate": "./setup.sh"
+}

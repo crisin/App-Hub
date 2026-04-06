@@ -1,0 +1,78 @@
+-- User cache table
+CREATE TABLE IF NOT EXISTS UserEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    avatar_url TEXT,
+    cached_at INTEGER NOT NULL DEFAULT 0
+);
+
+-- Generic key-value cache for API responses
+CREATE TABLE IF NOT EXISTS CacheEntry (
+    cache_key TEXT NOT NULL PRIMARY KEY,
+    json_value TEXT NOT NULL,
+    cached_at INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL DEFAULT 0
+);
+
+-- Auth token storage (backup to secure storage)
+CREATE TABLE IF NOT EXISTS AuthToken (
+    id INTEGER NOT NULL PRIMARY KEY DEFAULT 1,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at INTEGER NOT NULL DEFAULT 0
+);
+
+-- ============================================
+-- User queries
+-- ============================================
+
+getUserById:
+SELECT * FROM UserEntity WHERE id = ?;
+
+getAllUsers:
+SELECT * FROM UserEntity ORDER BY name ASC;
+
+insertUser:
+INSERT OR REPLACE INTO UserEntity (id, name, email, avatar_url, cached_at)
+VALUES (?, ?, ?, ?, ?);
+
+deleteUser:
+DELETE FROM UserEntity WHERE id = ?;
+
+deleteAllUsers:
+DELETE FROM UserEntity;
+
+-- ============================================
+-- Cache queries
+-- ============================================
+
+getCacheEntry:
+SELECT * FROM CacheEntry WHERE cache_key = ? AND expires_at > ?;
+
+insertCacheEntry:
+INSERT OR REPLACE INTO CacheEntry (cache_key, json_value, cached_at, expires_at)
+VALUES (?, ?, ?, ?);
+
+deleteCacheEntry:
+DELETE FROM CacheEntry WHERE cache_key = ?;
+
+deleteExpiredCacheEntries:
+DELETE FROM CacheEntry WHERE expires_at <= ?;
+
+deleteAllCacheEntries:
+DELETE FROM CacheEntry;
+
+-- ============================================
+-- Auth token queries
+-- ============================================
+
+getAuthToken:
+SELECT * FROM AuthToken WHERE id = 1;
+
+insertAuthToken:
+INSERT OR REPLACE INTO AuthToken (id, access_token, refresh_token, expires_at)
+VALUES (1, ?, ?, ?);
+
+deleteAuthToken:
+DELETE FROM AuthToken WHERE id = 1;

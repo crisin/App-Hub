@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-shared:
+    name: Build & Test Shared Module
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Build JS target and run tests on Linux.
+      # iOS targets require macOS and are built in the build-ios job.
+      - name: Build shared module (JS target)
+        run: ./gradlew :shared:compileKotlinJs
+
+      - name: Run shared tests
+        run: ./gradlew :shared:jsTest
+
+  build-android:
+    name: Build Android App
+    runs-on: ubuntu-latest
+    needs: build-shared
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Android SDK is pre-installed on ubuntu-latest runners.
+      # The shared module auto-detects it via ANDROID_HOME and
+      # enables the Android target + androidApp module.
+      - name: Build Android debug
+        run: ./gradlew :androidApp:assembleDebug
+
+      - name: Run Android lint
+        run: ./gradlew :androidApp:lintDebug
+
+  build-ios:
+    name: Build iOS Framework
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Kotlin/Native iOS compilation requires macOS.
+      # Build all three iOS architectures + link the simulator framework.
+      - name: Compile iOS targets
+        run: ./gradlew :shared:compileKotlinIosArm64 :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosX64
+
+      - name: Link iOS framework (Simulator arm64)
+        run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+
+  build-web:
+    name: Build Web App
+    runs-on: ubuntu-latest
+    needs: build-shared
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Web app
+        run: ./gradlew :webApp:jsBrowserProductionWebpack
