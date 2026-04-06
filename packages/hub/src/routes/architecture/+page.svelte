@@ -50,6 +50,25 @@
   // Layout mode
   let layoutMode = $state<'dagre' | 'cose'>('dagre')
 
+  // Density / spacing
+  type Density = 'compact' | 'spread' | 'expanded'
+  let density = $state<Density>('compact')
+  const DENSITY_MULTIPLIERS: Record<Density, number> = {
+    compact: 1,
+    spread: 2,
+    expanded: 3.5,
+  }
+  const DENSITY_NODE_SIZE: Record<Density, number> = {
+    compact: 28,
+    spread: 32,
+    expanded: 38,
+  }
+  const DENSITY_FONT_SIZE: Record<Density, number> = {
+    compact: 9,
+    spread: 11,
+    expanded: 13,
+  }
+
   // Selected node
   let selectedNode = $state<any>(null)
   let connectedNodes = $state<any[]>([])
@@ -137,12 +156,12 @@
           'text-valign': 'bottom' as any,
           'text-halign': 'center' as any,
           'text-margin-y': 6,
-          'font-size': 9,
+          'font-size': DENSITY_FONT_SIZE[density],
           color: 'rgba(255,255,255,0.7)',
           'text-wrap': 'ellipsis' as any,
-          'text-max-width': '100px',
-          width: 28,
-          height: 28,
+          'text-max-width': density === 'expanded' ? '150px' : density === 'spread' ? '120px' : '100px',
+          width: DENSITY_NODE_SIZE[density],
+          height: DENSITY_NODE_SIZE[density],
           'border-width': 2,
           'border-color': 'rgba(0,0,0,0.3)',
           'overlay-padding': 4,
@@ -176,8 +195,8 @@
           'text-margin-y': 6,
           'font-size': 9,
           color: 'rgba(255,255,255,0.7)',
-          width: 36,
-          height: 36,
+          width: DENSITY_NODE_SIZE[density] + 8,
+          height: DENSITY_NODE_SIZE[density] + 8,
           'border-width': 2,
           'border-color': 'rgba(0,0,0,0.3)',
           shape: 'diamond' as any,
@@ -239,27 +258,33 @@
   }
 
   function getLayoutConfig() {
+    const m = DENSITY_MULTIPLIERS[density]
+
     if (layoutMode === 'dagre') {
       return {
         name: 'dagre',
         rankDir: 'TB',
-        nodeSep: 60,
-        rankSep: 100,
-        edgeSep: 30,
+        nodeSep: 60 * m,
+        rankSep: 100 * m,
+        edgeSep: 30 * m,
         padding: 50,
         animate: true,
         animationDuration: 400,
+        fit: true,
       }
     }
     return {
       name: 'cose',
-      nodeRepulsion: () => 8000,
-      idealEdgeLength: () => 120,
-      gravity: 0.3,
-      padding: 40,
+      nodeRepulsion: () => 8000 * m * m * m,
+      idealEdgeLength: () => 100 * m,
+      edgeElasticity: () => 100 / m,
+      gravity: 0.15 / m,
+      numIter: density === 'expanded' ? 2000 : 1000,
+      padding: 50,
       animate: true,
-      animationDuration: 400,
-      randomize: false,
+      animationDuration: 500,
+      randomize: density !== 'compact',
+      fit: true,
     }
   }
 
@@ -330,6 +355,7 @@
     selectedNode = null
     connectedNodes = []
     cy.elements().remove()
+    cy.style(getCyStyle() as any)
     cy.add(buildElements())
     cy.elements().removeClass('highlighted highlighted-edge dimmed')
     const layout = cy.layout(getLayoutConfig() as any)
@@ -344,6 +370,13 @@
   function handleLayoutToggle() {
     layoutMode = layoutMode === 'dagre' ? 'cose' : 'dagre'
     // Rebuild elements since compound grouping changes per layout mode
+    updateGraph()
+  }
+
+  function cycleDensity() {
+    const order: Density[] = ['compact', 'spread', 'expanded']
+    const idx = order.indexOf(density)
+    density = order[(idx + 1) % order.length]
     updateGraph()
   }
 
@@ -394,6 +427,9 @@
       <div class="toolbar-controls">
         <button class="ctrl-btn" onclick={handleLayoutToggle} title="Toggle layout">
           {layoutMode === 'dagre' ? '\u2B22' : '\u25A6'} {layoutMode === 'dagre' ? 'Hierarchical' : 'Force'}
+        </button>
+        <button class="ctrl-btn" onclick={cycleDensity} title="Cycle spacing density">
+          {density === 'compact' ? '\u2581' : density === 'spread' ? '\u2583' : '\u2587'} {density.charAt(0).toUpperCase() + density.slice(1)}
         </button>
         <button class="ctrl-btn" onclick={fitGraph} title="Fit to view">&#x2922;</button>
         <button class="ctrl-btn" onclick={zoomIn} title="Zoom in">+</button>
