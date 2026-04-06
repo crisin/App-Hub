@@ -14,19 +14,15 @@
     done: 'Done',
   }
 
-  // Mutable board state — derived from server data, locally mutated for optimistic updates
-  let serverLanes = $derived(data.lanes)
-  let localOverrides = $state<Record<BoardLane, BoardIssue[]> | null>(null)
-  let lanes = $derived(localOverrides ?? serverLanes)
+  // Board state — owned locally, initialized from server data
+  // We use $state (not $derived from data.lanes) so we can update it
+  // from SSE events and optimistic drag-and-drop without reactivity issues.
+  let lanes = $state<Record<BoardLane, BoardIssue[]>>(structuredClone(data.lanes))
 
   function mutateLanes(
     fn: (current: Record<BoardLane, BoardIssue[]>) => Record<BoardLane, BoardIssue[]>,
   ) {
-    localOverrides = fn(structuredClone(lanes))
-  }
-
-  function resetOverrides() {
-    localOverrides = null
+    lanes = fn(structuredClone(lanes))
   }
 
   // Drag state
@@ -216,8 +212,7 @@
     const res = await fetch('/api/board')
     if (res.ok) {
       const { data: boardData } = await res.json()
-      localOverrides = null
-      data.lanes = boardData
+      lanes = boardData
     }
   }
 
@@ -589,8 +584,8 @@
     })
 
     if (!res.ok) {
-      // Revert on failure
-      resetOverrides()
+      // Revert on failure — re-fetch from server
+      await invalidateBoard()
     }
   }
 
