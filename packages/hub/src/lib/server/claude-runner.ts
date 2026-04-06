@@ -165,6 +165,94 @@ function findClaude(): string | null {
   return null
 }
 
+/**
+ * Format a stream-json event from Claude CLI into a human-readable line.
+ * Claude's --output-format stream-json emits one JSON object per line with types like:
+ *   { type: "assistant", message: { content: [...] } }
+ *   { type: "content_block_start", content_block: { type: "tool_use", name: "...", ... } }
+ *   { type: "content_block_delta", delta: { type: "text_delta", text: "..." } }
+ *   { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: "..." } }
+ *   { type: "result", result: "...", ... }
+ * Returns null to skip events that don't need display.
+ */
+function formatStreamEvent(event: any): string | null {
+  if (!event || !event.type) return null
+
+  switch (event.type) {
+    case 'assistant': {
+      // Initial assistant message — extract text blocks
+      const content = event.message?.content
+      if (Array.isArray(content)) {
+        const texts = content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
+          .join('\n')
+        if (texts.trim()) return texts.trim()
+      }
+      return null
+    }
+
+    case 'content_block_start': {
+      const block = event.content_block
+      if (!block) return null
+      if (block.type === 'tool_use') {
+        return `▶ ${block.name}`
+      }
+      if (block.type === 'text' && block.text) {
+        return block.text
+      }
+      return null
+    }
+
+    case 'content_block_delta': {
+      const delta = event.delta
+      if (!delta) return null
+      if (delta.type === 'text_delta' && delta.text) {
+        // Stream text chunks — only show substantial ones
+        const text = delta.text.trim()
+        if (text.length > 0) return text
+      }
+      return null
+    }
+
+    case 'content_block_stop':
+      return null // skip
+
+    case 'message_start':
+    case 'message_delta':
+    case 'message_stop':
+      return null // skip meta events
+
+    case 'result': {
+      // Final result
+      if (event.subtype === 'success') {
+        const cost = event.cost_usd ? ` ($${event.cost_usd.toFixed(4)})` : ''
+        return `✓ Done${cost}`
+      }
+      if (event.subtype === 'error') {
+        return `✗ Error: ${event.error || 'unknown'}`
+      }
+      // For other result types, show the result text if available
+      if (typeof event.result === 'string' && event.result.trim()) {
+        return event.result.trim().slice(0, 500)
+      }
+      return null
+    }
+
+    case 'system': {
+      // System-level events
+      if (event.subtype === 'init') {
+        const tools = event.tools?.join(', ') || 'none'
+        return `⚙ Initialized (tools: ${tools})`
+      }
+      return null
+    }
+
+    default:
+      return null
+  }
+}
+
 function pushOutput(ch: OutputLine['ch'], text: string) {
   const newLines: OutputLine[] = []
   const lines = text.split('\n')
@@ -435,11 +523,19 @@ export function triggerRunner(): ClaudeRunnerStatus {
     }
   }
 
-  // Build prompt
+  // Build prompt — include project-level description and context if available
+  const projectRow = db.prepare('SELECT description, context FROM projects WHERE slug = ?').get(scope) as { description?: string; context?: string } | undefined
   const labels = JSON.parse(issue.labels || '[]').join(', ')
-  let prompt = `You are working on ${contextName}.
+  let prompt = `You are working on ${contextName}.`
 
-TASK: ${issue.title}
+  if (projectRow?.description) {
+    prompt += `\n\nPROJECT DESCRIPTION:\n${projectRow.description}`
+  }
+  if (projectRow?.context) {
+    prompt += `\n\nPROJECT CONTEXT:\n${projectRow.context}`
+  }
+
+  prompt += `\n\nTASK: ${issue.title}
 PRIORITY: ${issue.priority}`
 
   if (issue.description) {
@@ -502,7 +598,7 @@ PRIORITY: ${issue.priority}`
 
   currentProcess = spawn(
     claudeBin,
-    ['-p', prompt, '--allowedTools', 'Read,Grep,Glob,Bash,Edit,Write'],
+    ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob,Bash,Edit,Write'],
     {
       cwd: workDir,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -510,12 +606,33 @@ PRIORITY: ${issue.priority}`
     },
   )
 
+  // Buffer for incomplete JSON lines from stdout (stream-json outputs one JSON object per line)
+  let stdoutBuffer = ''
+
   currentProcess.stdout?.on('data', (data: Buffer) => {
-    pushOutput('stdout', data.toString())
+    stdoutBuffer += data.toString()
+    const lines = stdoutBuffer.split('\n')
+    // Keep the last (possibly incomplete) line in the buffer
+    stdoutBuffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const event = JSON.parse(line)
+        const formatted = formatStreamEvent(event)
+        if (formatted) {
+          pushOutput('stdout', formatted)
+        }
+      } catch {
+        // Not valid JSON — output raw
+        pushOutput('stdout', line)
+      }
+    }
   })
 
   currentProcess.stderr?.on('data', (data: Buffer) => {
-    pushOutput('stderr', data.toString())
+    const text = data.toString().trim()
+    if (text) pushOutput('stderr', text)
   })
 
   currentProcess.on('close', (code) => {

@@ -175,11 +175,12 @@ function migrate(db: Database.Database) {
     // column already exists — ignore
   }
 
-  // Add color, icon, archived_at columns to projects
+  // Add color, icon, archived_at, context columns to projects
   for (const col of [
     "ALTER TABLE projects ADD COLUMN color TEXT DEFAULT ''",
     "ALTER TABLE projects ADD COLUMN icon TEXT DEFAULT ''",
     'ALTER TABLE projects ADD COLUMN archived_at TEXT DEFAULT NULL',
+    "ALTER TABLE projects ADD COLUMN context TEXT DEFAULT ''",
   ]) {
     try {
       db.exec(col)

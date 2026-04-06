@@ -12,6 +12,7 @@ export interface ProjectMeta {
   name: string
   slug: string
   description: string
+  context?: string // optional project context passed to all issues/tasks
   status: ProjectStatus
   template: string
   tags: string[]
