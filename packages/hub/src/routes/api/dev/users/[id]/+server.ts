@@ -25,9 +25,9 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
   // Allow unauthenticated password set for dev convenience (same as any-password login)
   const body = (await request.json().catch(() => ({}))) as Record<string, string>
 
-  // Only admin can change role; user can change own name/password
-  if (body.role !== undefined && caller?.role !== 'admin') {
-    return json({ ok: false, error: 'Admin required to change role' }, { status: 403 })
+  // Only creator/admin can change roles
+  if (body.role !== undefined && caller?.role !== 'admin' && caller?.role !== 'creator') {
+    return json({ ok: false, error: 'Admin or Creator required to change role' }, { status: 403 })
   }
 
   const db = getDb()
@@ -35,6 +35,11 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
     | Record<string, string>
     | undefined
   if (!user) return json({ ok: false, error: 'User not found' }, { status: 404 })
+
+  // Protect creator account: cannot change their role
+  if (user.role === 'creator' && body.role !== undefined && body.role !== 'creator') {
+    return json({ ok: false, error: 'Cannot change the Creator role' }, { status: 403 })
+  }
 
   const updates: string[] = []
   const values: unknown[] = []
@@ -67,11 +72,20 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
 
 export const DELETE: RequestHandler = async ({ request, params }) => {
   const caller = getCallerRole(request)
-  if (caller?.role !== 'admin') {
-    return json({ ok: false, error: 'Admin required' }, { status: 403 })
+  if (caller?.role !== 'admin' && caller?.role !== 'creator') {
+    return json({ ok: false, error: 'Admin or Creator required' }, { status: 403 })
   }
 
   const db = getDb()
+
+  // Prevent deleting the creator account
+  const target = db.prepare('SELECT role FROM dev_users WHERE id = ?').get(params.id) as
+    | { role: string }
+    | undefined
+  if (target?.role === 'creator') {
+    return json({ ok: false, error: 'Cannot delete the Creator account' }, { status: 403 })
+  }
+
   const result = db.prepare('DELETE FROM dev_users WHERE id = ?').run(params.id)
   if (result.changes === 0) {
     return json({ ok: false, error: 'User not found' }, { status: 404 })

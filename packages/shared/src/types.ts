@@ -151,13 +151,16 @@ export interface BranchReview {
   issue_labels?: string[]
 }
 
+/** User role hierarchy: creator > admin > user */
+export type DevUserRole = 'creator' | 'admin' | 'user'
+
 /** Dev API mock user for spawned projects */
 export interface DevUser {
   id: string
   email: string
   name: string
   avatar?: string
-  role: string
+  role: DevUserRole
 }
 
 /** Dev API key (service-to-service auth for spawned projects) */

@@ -227,15 +227,23 @@ function migrate(db: Database.Database) {
     ).run({ path: process.cwd(), now })
   }
 
-  // Seed a default dev user if none exists
-  const count = db.prepare('SELECT COUNT(*) as c FROM dev_users').get() as { c: number }
-  if (count.c === 0) {
-    db.prepare(
-      `
-      INSERT INTO dev_users (id, email, name, role)
-      VALUES ('dev-user-1', 'dev@apphub.local', 'Dev User', 'admin')
-    `,
-    ).run()
+  // Seed the creator account if no creator exists
+  const creator = db
+    .prepare("SELECT COUNT(*) as c FROM dev_users WHERE role = 'creator'")
+    .get() as { c: number }
+  if (creator.c === 0) {
+    // Check if the old default admin exists and upgrade it, otherwise create fresh
+    const oldDefault = db
+      .prepare("SELECT id FROM dev_users WHERE id = 'dev-user-1'")
+      .get() as { id: string } | undefined
+    if (oldDefault) {
+      db.prepare("UPDATE dev_users SET role = 'creator' WHERE id = 'dev-user-1'").run()
+    } else {
+      db.prepare(
+        `INSERT INTO dev_users (id, email, name, role)
+         VALUES ('dev-user-1', 'creator@apphub.local', 'Creator', 'creator')`,
+      ).run()
+    }
   }
 }
 
