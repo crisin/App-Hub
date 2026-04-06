@@ -86,11 +86,11 @@ export const POST: RequestHandler = async ({ params }) => {
 
   // Move issue to done
   const maxPos = db
-    .prepare("SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'done'")
+    .prepare("SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'")
     .get() as { max: number }
 
   db.prepare(
-    `UPDATE board_issues SET lane = 'done', position = @position, updated = @now WHERE id = @id`,
+    `UPDATE items SET stage = 'done', position = @position, updated = @now WHERE id = @id`,
   ).run({ position: maxPos.max + 1, now, id: review.issue_id })
 
   logger.info('claude', 'branch.merged', `Merged branch ${branchName} into ${review.base_branch}`, {

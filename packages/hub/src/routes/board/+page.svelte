@@ -1,34 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { BoardIssue, BoardLane, IssueAttachment, ClaudeNote } from '@apphub/shared'
+  import type { Item, ItemStage, IssueAttachment, ClaudeNote } from '@apphub/shared'
+  import { ITEM_STAGES, ITEM_STAGE_LABELS } from '@apphub/shared'
 
   let { data } = $props()
 
-  const laneOrder: BoardLane[] = ['backlog', 'todo', 'in_progress', 'claude', 'review', 'done']
-  const laneLabels: Record<BoardLane, string> = {
-    backlog: 'Backlog',
-    todo: 'Todo',
-    in_progress: 'In Progress',
-    claude: 'Claude',
-    review: 'Review',
-    done: 'Done',
-  }
+  const laneOrder: ItemStage[] = ITEM_STAGES
+  const laneLabels: Record<ItemStage, string> = ITEM_STAGE_LABELS
 
   // Board state — owned locally, initialized from server data
-  // We use $state (not $derived from data.lanes) so we can update it
-  // from SSE events and optimistic drag-and-drop without reactivity issues.
-  let lanes = $state<Record<BoardLane, BoardIssue[]>>(structuredClone(data.lanes))
+  let lanes = $state<Record<ItemStage, Item[]>>(structuredClone(data.lanes))
 
   function mutateLanes(
-    fn: (current: Record<BoardLane, BoardIssue[]>) => Record<BoardLane, BoardIssue[]>,
+    fn: (current: Record<ItemStage, Item[]>) => Record<ItemStage, Item[]>,
   ) {
     lanes = fn(structuredClone(lanes))
   }
 
   // Drag state
-  let draggedIssue = $state<BoardIssue | null>(null)
-  let dragSourceLane = $state<BoardLane | null>(null)
-  let dragOverLane = $state<BoardLane | null>(null)
+  let draggedIssue = $state<Item | null>(null)
+  let dragSourceLane = $state<ItemStage | null>(null)
+  let dragOverLane = $state<ItemStage | null>(null)
 
   // Project scopes and filters from server
   let scopes = $derived(data.scopes)
@@ -54,17 +46,10 @@
   // Filtered lanes — apply project filter
   let filteredLanes = $derived.by(() => {
     if (activeProjectFilters.size === 0) return lanes
-    const filtered: Record<BoardLane, BoardIssue[]> = {
-      backlog: [],
-      todo: [],
-      in_progress: [],
-      claude: [],
-      review: [],
-      done: [],
-    }
-    for (const lane of laneOrder) {
-      filtered[lane] = lanes[lane].filter((issue) =>
-        activeProjectFilters.has(issue.project_scope || 'hub'),
+    const filtered = {} as Record<ItemStage, Item[]>
+    for (const stage of laneOrder) {
+      filtered[stage] = (lanes[stage] ?? []).filter((item) =>
+        activeProjectFilters.has(item.project_slug || 'hub'),
       )
     }
     return filtered
@@ -75,12 +60,12 @@
   let newTitle = $state('')
   let newDescription = $state('')
   let newPriority = $state('medium')
-  let newLane = $state<BoardLane>('backlog')
+  let newLane = $state<ItemStage>('idea')
   let newLabels = $state('')
   let newScope = $state('hub')
 
   // Edit modal
-  let editingIssue = $state<BoardIssue | null>(null)
+  let editingIssue = $state<Item | null>(null)
   let editTitle = $state('')
   let editDescription = $state('')
   let editPriority = $state('medium')
@@ -100,7 +85,7 @@
   let confirmDeleteId = $state('')
 
   // Check if an issue is locked (being worked on by Claude)
-  function isLocked(issue: BoardIssue): boolean {
+  function isLocked(issue: Item): boolean {
     return issue.assigned_to === 'claude-runner'
   }
 
@@ -364,19 +349,19 @@
         title: newTitle,
         description: newDescription,
         priority: newPriority,
-        lane: newLane,
+        stage: newLane,
         labels: newLabels
           .split(',')
           .map((l) => l.trim())
           .filter(Boolean),
-        project_scope: newScope,
+        project_slug: newScope,
       }),
     })
 
     if (res.ok) {
-      const { data: issue } = await res.json()
+      const { data: item } = await res.json()
       mutateLanes((l) => {
-        l[issue.lane as BoardLane] = [...l[issue.lane as BoardLane], issue]
+        l[item.stage as ItemStage] = [...l[item.stage as ItemStage], item]
         return l
       })
       newTitle = ''
@@ -387,13 +372,13 @@
     }
   }
 
-  function openEdit(issue: BoardIssue) {
+  function openEdit(issue: Item) {
     editingIssue = issue
     editTitle = issue.title
     editDescription = issue.description
     editPriority = issue.priority
     editLabels = issue.labels.join(', ')
-    editScope = issue.project_scope || 'hub'
+    editScope = issue.project_slug || 'hub'
     editAttachments = []
     editNotes = []
     // Load attachments and notes in parallel
@@ -425,15 +410,15 @@
           .split(',')
           .map((l) => l.trim())
           .filter(Boolean),
-        project_scope: editScope,
+        project_slug: editScope,
       }),
     })
 
     if (res.ok) {
       const { data: updated } = await res.json()
-      const lane = updated.lane as BoardLane
+      const stage = updated.stage as ItemStage
       mutateLanes((l) => {
-        l[lane] = l[lane].map((i) => (i.id === updated.id ? updated : i))
+        l[stage] = l[stage].map((i) => (i.id === updated.id ? updated : i))
         return l
       })
       editingIssue = null
@@ -466,7 +451,7 @@
 
     // Update attachment count on card
     mutateLanes((l) => {
-      const lane = editingIssue!.lane
+      const lane = editingIssue!.stage
       l[lane] = l[lane].map((i) =>
         i.id === editingIssue!.id
           ? ({ ...i, attachment_count: editAttachments.length } as any)
@@ -525,7 +510,7 @@
     if (res.ok) {
       editAttachments = editAttachments.filter((a) => a.id !== attId)
       mutateLanes((l) => {
-        const lane = editingIssue!.lane
+        const lane = editingIssue!.stage
         l[lane] = l[lane].map((i) =>
           i.id === editingIssue!.id
             ? ({ ...i, attachment_count: editAttachments.length } as any)
@@ -542,7 +527,7 @@
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  async function deleteIssue(id: string, lane: BoardLane) {
+  async function deleteIssue(id: string, lane: ItemStage) {
     const res = await fetch(`/api/board/${id}`, { method: 'DELETE' })
     if (res.ok) {
       mutateLanes((l) => {
@@ -555,7 +540,7 @@
 
   // --- Drag and Drop ---
 
-  function onDragStart(e: DragEvent, issue: BoardIssue, lane: BoardLane) {
+  function onDragStart(e: DragEvent, issue: Item, lane: ItemStage) {
     if (isLocked(issue)) {
       e.preventDefault()
       return
@@ -572,13 +557,13 @@
     dragOverLane = null
   }
 
-  function onDragOver(e: DragEvent, lane: BoardLane) {
+  function onDragOver(e: DragEvent, lane: ItemStage) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
     dragOverLane = lane
   }
 
-  function onDragLeave(e: DragEvent, lane: BoardLane) {
+  function onDragLeave(e: DragEvent, lane: ItemStage) {
     // Only clear if leaving the lane container itself
     const related = e.relatedTarget as HTMLElement
     const current = e.currentTarget as HTMLElement
@@ -587,7 +572,7 @@
     }
   }
 
-  async function onDrop(e: DragEvent, targetLane: BoardLane) {
+  async function onDrop(e: DragEvent, targetLane: ItemStage) {
     e.preventDefault()
     dragOverLane = null
 
@@ -600,7 +585,7 @@
     // Optimistic update
     mutateLanes((l) => {
       l[sourceLane] = l[sourceLane].filter((i) => i.id !== issue.id)
-      const movedIssue = { ...issue, lane: targetLane, position: l[targetLane].length }
+      const movedIssue = { ...issue, stage: targetLane, position: l[targetLane].length }
       l[targetLane] = [...l[targetLane], movedIssue]
       return l
     })
@@ -610,12 +595,12 @@
     const moves = [
       ...currentLanes[sourceLane].map((item, idx) => ({
         id: item.id,
-        lane: sourceLane,
+        stage: sourceLane,
         position: idx,
       })),
       ...currentLanes[targetLane].map((item, idx) => ({
         id: item.id,
-        lane: targetLane,
+        stage: targetLane,
         position: idx,
       })),
     ]
@@ -783,9 +768,9 @@
                   {issue.description.slice(0, 80)}{issue.description.length > 80 ? '...' : ''}
                 </p>
               {/if}
-              {#if issue.project_scope && issue.project_scope !== 'hub'}
+              {#if issue.project_slug && issue.project_slug !== 'hub'}
                 <div class="scope-badge-row">
-                  <span class="scope-badge">{issue.project_scope}</span>
+                  <span class="scope-badge">{issue.project_slug}</span>
                 </div>
               {/if}
               {#if issue.labels.length > 0}
@@ -872,8 +857,8 @@
                 <div class="queued-item">
                   <span class="priority-dot {priorityClass(qi.priority)}" title={qi.priority}></span>
                   <span class="queued-title">{qi.title}</span>
-                  {#if qi.project_scope && qi.project_scope !== 'hub'}
-                    <span class="scope-badge">{qi.project_scope}</span>
+                  {#if qi.project_slug && qi.project_slug !== 'hub'}
+                    <span class="scope-badge">{qi.project_slug}</span>
                   {/if}
                 </div>
               {/each}
@@ -888,7 +873,7 @@
           {:else}
             <div class="empty-icon">&#x2726;</div>
             <div class="empty-title">No output</div>
-            <div class="empty-detail">Drag an issue to the Claude lane and hit Run.</div>
+            <div class="empty-detail">Drag an issue to the Claude stage and hit Run.</div>
           {/if}
         </div>
       {:else}
@@ -951,7 +936,7 @@
             <button
               class="btn-danger-sm"
               onclick={() => {
-                deleteIssue(editingIssue!.id, editingIssue!.lane)
+                deleteIssue(editingIssue!.id, editingIssue!.stage)
                 editingIssue = null
               }}>Yes</button
             >

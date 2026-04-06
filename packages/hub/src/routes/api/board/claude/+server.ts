@@ -8,8 +8,8 @@ export const GET: RequestHandler = async () => {
   const rows = db
     .prepare(
       `
-    SELECT * FROM board_issues
-    WHERE lane = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
+    SELECT * FROM items
+    WHERE stage = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
     ORDER BY
       CASE priority
         WHEN 'critical' THEN 0

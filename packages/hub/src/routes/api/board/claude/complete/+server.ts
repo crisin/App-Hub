@@ -16,14 +16,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
   // Get next position in done lane
   const maxPos = db
-    .prepare("SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'done'")
+    .prepare("SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'")
     .get() as { max: number }
 
   const result = db
     .prepare(
       `
-    UPDATE board_issues
-    SET lane = 'done', assigned_to = '', position = @position, updated = @now
+    UPDATE items
+    SET stage = 'done', assigned_to = '', position = @position, updated = @now
     WHERE id = @id
   `,
     )
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ok: false, error: 'Issue not found' }, { status: 404 })
   }
 
-  const issue = db.prepare('SELECT * FROM board_issues WHERE id = ?').get(id) as any
+  const issue = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
   issue.labels = JSON.parse(issue.labels || '[]')
 
   logger.info('claude', 'issue.completed', `Issue "${issue.title}" marked as done`, {

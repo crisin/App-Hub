@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   const db = getDb()
 
   // Verify issue exists
-  const issue = db.prepare('SELECT id, title FROM board_issues WHERE id = ?').get(params.id) as any
+  const issue = db.prepare('SELECT id, title FROM items WHERE id = ?').get(params.id) as any
   if (!issue) {
     return json({ ok: false, error: 'Issue not found' }, { status: 404 })
   }

@@ -78,6 +78,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
     idea: [],
     plan: [],
     build: [],
+    claude: [],
     review: [],
     done: [],
   }

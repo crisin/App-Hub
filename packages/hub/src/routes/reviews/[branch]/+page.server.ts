@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ params }) => {
     .prepare(
       `SELECT br.*, bi.title as issue_title, bi.priority as issue_priority, bi.labels as issue_labels
        FROM branch_reviews br
-       JOIN board_issues bi ON br.issue_id = bi.id
+       JOIN items bi ON br.issue_id = bi.id
        WHERE br.branch_name = @branch`,
     )
     .get({ branch: branchName }) as any

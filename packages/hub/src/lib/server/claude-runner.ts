@@ -213,9 +213,9 @@ export function cleanupStaleAssignments(): number {
     // Find issues still assigned to claude-runner
     const staleIssues = db
       .prepare(
-        "SELECT id, title, lane FROM board_issues WHERE assigned_to = 'claude-runner'",
+        "SELECT id, title, stage FROM items WHERE assigned_to = 'claude-runner'",
       )
-      .all() as { id: string; title: string; lane: string }[]
+      .all() as { id: string; title: string; stage: string }[]
 
     if (staleIssues.length === 0) return 0
 
@@ -223,15 +223,15 @@ export function cleanupStaleAssignments(): number {
     for (const issue of staleIssues) {
       // Move back to claude lane (re-queue) and clear assignment
       db.prepare(
-        `UPDATE board_issues
-         SET assigned_to = '', lane = 'claude', updated = @now
+        `UPDATE items
+         SET assigned_to = '', stage = 'claude', updated = @now
          WHERE id = @id`,
       ).run({ id: issue.id, now })
 
       addNote(
         issue.id,
         'error',
-        `Stale assignment cleared on server restart (was in ${issue.lane})`,
+        `Stale assignment cleared on server restart (was in ${issue.stage})`,
       )
       logger.warn(
         'claude',
@@ -286,18 +286,26 @@ export function getRunnerOutput(sinceSeq = 0): { seq: number; lines: OutputLine[
   return { seq: outputSeq, lines: outputLines.slice(startIdx) }
 }
 
-/** Check if there are unclaimed issues in the Claude lane */
+/** Check if there are unclaimed, unblocked issues in the Claude stage */
 export function hasUnclaimedClaudeIssues(): boolean {
   const db = getDb()
   const row = db
     .prepare(
-      "SELECT COUNT(*) as c FROM board_issues WHERE lane = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)",
+      `SELECT COUNT(*) as c FROM items i
+       WHERE i.stage = 'claude' AND (i.assigned_to = '' OR i.assigned_to IS NULL)
+       AND NOT EXISTS (
+         SELECT 1 FROM item_dependencies d
+         JOIN items blocker ON d.depends_on_id = blocker.id
+         WHERE d.item_id = i.id
+           AND d.dependency_type = 'blocks'
+           AND blocker.stage != 'done'
+       )`,
     )
     .get() as { c: number }
   return row.c > 0
 }
 
-/** Trigger the runner — picks up the next unclaimed Claude lane issue */
+/** Trigger the runner — picks the next unclaimed, unblocked Claude stage item */
 export function triggerRunner(): ClaudeRunnerStatus {
   if (currentProcess && currentStatus.state === 'running') {
     return currentStatus
@@ -310,18 +318,23 @@ export function triggerRunner(): ClaudeRunnerStatus {
     return currentStatus
   }
 
-  // Find the top unclaimed issue
+  // Find the top unclaimed issue — skipping blocked items
   const db = getDb()
   const issue = db
     .prepare(
-      `
-    SELECT * FROM board_issues
-    WHERE lane = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
-    ORDER BY
-      CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
-      position ASC
-    LIMIT 1
-  `,
+      `SELECT i.* FROM items i
+       WHERE i.stage = 'claude' AND (i.assigned_to = '' OR i.assigned_to IS NULL)
+       AND NOT EXISTS (
+         SELECT 1 FROM item_dependencies d
+         JOIN items blocker ON d.depends_on_id = blocker.id
+         WHERE d.item_id = i.id
+           AND d.dependency_type = 'blocks'
+           AND blocker.stage != 'done'
+       )
+       ORDER BY
+         CASE i.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
+         i.position ASC
+       LIMIT 1`,
     )
     .get() as any
 
@@ -335,9 +348,9 @@ export function triggerRunner(): ClaudeRunnerStatus {
   const result = db
     .prepare(
       `
-    UPDATE board_issues
-    SET assigned_to = 'claude-runner', lane = 'in_progress', updated = @now
-    WHERE id = @id AND lane = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
+    UPDATE items
+    SET assigned_to = 'claude-runner', stage = 'build', updated = @now
+    WHERE id = @id AND stage = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
   `,
     )
     .run({ id: issue.id, now })
@@ -351,8 +364,8 @@ export function triggerRunner(): ClaudeRunnerStatus {
 
   addNote(issue.id, 'info', `Claimed by claude-runner (priority: ${issue.priority})`)
 
-  // Resolve working directory from project_scope
-  const scope = issue.project_scope || 'hub'
+  // Resolve working directory from project_slug
+  const scope = issue.project_slug || 'hub'
   const resolved = resolveScope(scope)
 
   if (!resolved) {
@@ -558,13 +571,13 @@ PRIORITY: ${issue.priority}`
 
         const maxPos = db
           .prepare(
-            "SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'review'",
+            "SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'review'",
           )
           .get() as { max: number }
 
         db.prepare(
-          `UPDATE board_issues
-           SET lane = 'review', assigned_to = '', position = @position, updated = @now
+          `UPDATE items
+           SET stage = 'review', assigned_to = '', position = @position, updated = @now
            WHERE id = @id`,
         ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
       } else {
@@ -573,13 +586,13 @@ PRIORITY: ${issue.priority}`
 
         const maxPos = db
           .prepare(
-            "SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'done'",
+            "SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'",
           )
           .get() as { max: number }
 
         db.prepare(
-          `UPDATE board_issues
-           SET lane = 'done', assigned_to = '', position = @position, updated = @now
+          `UPDATE items
+           SET stage = 'done', assigned_to = '', position = @position, updated = @now
            WHERE id = @id`,
         ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
       }
@@ -635,11 +648,11 @@ PRIORITY: ${issue.priority}`
 
           const maxPos = db
             .prepare(
-              "SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'review'",
+              "SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'review'",
             )
             .get() as { max: number }
           db.prepare(
-            `UPDATE board_issues SET lane = 'review', assigned_to = '', position = @position, updated = @now WHERE id = @id`,
+            `UPDATE items SET stage = 'review', assigned_to = '', position = @position, updated = @now WHERE id = @id`,
           ).run({ id: issue.id, position: maxPos.max + 1, now: new Date().toISOString() })
         } else {
           // No commits — clean up and leave as error

@@ -10,24 +10,29 @@ export const PROJECT_STATUSES = [
 export const TASK_STATUSES = ['todo', 'in_progress', 'done', 'blocked'];
 /** Valid task priorities */
 export const TASK_PRIORITIES = ['low', 'medium', 'high', 'critical'];
-/** Item stages — the flow pipeline */
-export const ITEM_STAGES = ['idea', 'plan', 'build', 'review', 'done'];
+/** Item stages — the unified flow pipeline (including claude execution stage) */
+export const ITEM_STAGES = ['idea', 'plan', 'build', 'claude', 'review', 'done'];
+/** Display stages — stages shown in the project flow view (excludes claude) */
+export const FLOW_STAGES = ['idea', 'plan', 'build', 'review', 'done'];
 /** Human-readable stage labels */
 export const ITEM_STAGE_LABELS = {
     idea: 'Idea',
     plan: 'Plan',
     build: 'Build',
+    claude: 'Claude',
     review: 'Review',
     done: 'Done',
 };
 /** Item types */
 export const ITEM_TYPES = ['task', 'idea', 'bug', 'plan', 'note'];
-/** Map old board lanes to new stages */
+/** Dependency types */
+export const DEPENDENCY_TYPES = ['blocks', 'relates_to'];
+/** Map old board lanes to item stages */
 export const LANE_TO_STAGE = {
     backlog: 'idea',
     todo: 'plan',
     in_progress: 'build',
-    claude: 'build',
+    claude: 'claude',
     review: 'review',
     done: 'done',
 };

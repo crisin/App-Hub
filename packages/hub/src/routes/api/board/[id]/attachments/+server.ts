@@ -11,7 +11,7 @@ const ATTACHMENTS_DIR = path.join(process.cwd(), 'data', 'attachments')
 /** GET /api/board/:id/attachments — list attachments for an issue */
 export const GET: RequestHandler = async ({ params }) => {
   const db = getDb()
-  const issue = db.prepare('SELECT id FROM board_issues WHERE id = ?').get(params.id)
+  const issue = db.prepare('SELECT id FROM items WHERE id = ?').get(params.id)
   if (!issue) {
     return json({ ok: false, error: 'Issue not found' }, { status: 404 })
   }
@@ -26,7 +26,7 @@ export const GET: RequestHandler = async ({ params }) => {
 /** POST /api/board/:id/attachments — upload a file attachment */
 export const POST: RequestHandler = async ({ params, request }) => {
   const db = getDb()
-  const issue = db.prepare('SELECT id FROM board_issues WHERE id = ?').get(params.id)
+  const issue = db.prepare('SELECT id FROM items WHERE id = ?').get(params.id)
   if (!issue) {
     return json({ ok: false, error: 'Issue not found' }, { status: 404 })
   }

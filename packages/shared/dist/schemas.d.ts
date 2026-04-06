@@ -1,17 +1,21 @@
-import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType } from './types.js';
+import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType, DependencyType } from './types.js';
 /** Valid project statuses */
 export declare const PROJECT_STATUSES: ProjectStatus[];
 /** Valid task statuses */
 export declare const TASK_STATUSES: TaskStatus[];
 /** Valid task priorities */
 export declare const TASK_PRIORITIES: TaskPriority[];
-/** Item stages — the flow pipeline */
+/** Item stages — the unified flow pipeline (including claude execution stage) */
 export declare const ITEM_STAGES: ItemStage[];
+/** Display stages — stages shown in the project flow view (excludes claude) */
+export declare const FLOW_STAGES: ItemStage[];
 /** Human-readable stage labels */
 export declare const ITEM_STAGE_LABELS: Record<ItemStage, string>;
 /** Item types */
 export declare const ITEM_TYPES: ItemType[];
-/** Map old board lanes to new stages */
+/** Dependency types */
+export declare const DEPENDENCY_TYPES: DependencyType[];
+/** Map old board lanes to item stages */
 export declare const LANE_TO_STAGE: Record<BoardLane, ItemStage>;
 /** @deprecated Use ITEM_STAGES instead */
 export declare const BOARD_LANES: BoardLane[];

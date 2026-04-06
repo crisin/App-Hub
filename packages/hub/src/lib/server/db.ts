@@ -71,7 +71,7 @@ function migrate(db: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS claude_notes (
       id          TEXT PRIMARY KEY,
-      issue_id    TEXT NOT NULL REFERENCES board_issues(id) ON DELETE CASCADE,
+      issue_id    TEXT NOT NULL,
       type        TEXT NOT NULL DEFAULT 'progress',
       message     TEXT NOT NULL,
       created     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -104,7 +104,7 @@ function migrate(db: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS issue_attachments (
       id          TEXT PRIMARY KEY,
-      issue_id    TEXT NOT NULL REFERENCES board_issues(id) ON DELETE CASCADE,
+      issue_id    TEXT NOT NULL,
       filename    TEXT NOT NULL,
       mime_type   TEXT NOT NULL,
       size_bytes  INTEGER NOT NULL DEFAULT 0,
@@ -145,7 +145,7 @@ function migrate(db: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS branch_reviews (
       id            TEXT PRIMARY KEY,
-      issue_id      TEXT NOT NULL REFERENCES board_issues(id) ON DELETE CASCADE,
+      issue_id      TEXT NOT NULL,
       branch_name   TEXT NOT NULL UNIQUE,
       project_scope TEXT NOT NULL DEFAULT 'hub',
       worktree_path TEXT NOT NULL,
@@ -188,7 +188,7 @@ function migrate(db: Database.Database) {
     }
   }
 
-  // --- Items table (unified work items) ---
+  // --- Items table (unified work items — single source of truth) ---
   db.exec(`
     CREATE TABLE IF NOT EXISTS items (
       id            TEXT PRIMARY KEY,
@@ -212,6 +212,21 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_items_assigned ON items(assigned_to);
   `)
 
+  // --- Item dependencies table ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS item_dependencies (
+      id              TEXT PRIMARY KEY,
+      item_id         TEXT NOT NULL,
+      depends_on_id   TEXT NOT NULL,
+      dependency_type TEXT NOT NULL DEFAULT 'blocks',
+      created         TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(item_id, depends_on_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_deps_item ON item_dependencies(item_id);
+    CREATE INDEX IF NOT EXISTS idx_deps_depends ON item_dependencies(depends_on_id);
+  `)
+
   // Migrate board_issues -> items (one-time)
   migrateToItems(db)
 
@@ -232,7 +247,6 @@ function migrate(db: Database.Database) {
     .prepare("SELECT COUNT(*) as c FROM dev_users WHERE role = 'creator'")
     .get() as { c: number }
   if (creator.c === 0) {
-    // Check if the old default admin exists and upgrade it, otherwise create fresh
     const oldDefault = db
       .prepare("SELECT id FROM dev_users WHERE id = 'dev-user-1'")
       .get() as { id: string } | undefined
@@ -269,7 +283,7 @@ function migrateToItems(db: Database.Database) {
     backlog: 'idea',
     todo: 'plan',
     in_progress: 'build',
-    claude: 'build',
+    claude: 'claude',
     review: 'review',
     done: 'done',
   }

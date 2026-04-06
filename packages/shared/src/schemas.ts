@@ -1,4 +1,4 @@
-import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType } from './types.js'
+import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType, DependencyType } from './types.js'
 
 /** Valid project statuses */
 export const PROJECT_STATUSES: ProjectStatus[] = [
@@ -15,14 +15,18 @@ export const TASK_STATUSES: TaskStatus[] = ['todo', 'in_progress', 'done', 'bloc
 /** Valid task priorities */
 export const TASK_PRIORITIES: TaskPriority[] = ['low', 'medium', 'high', 'critical']
 
-/** Item stages — the flow pipeline */
-export const ITEM_STAGES: ItemStage[] = ['idea', 'plan', 'build', 'review', 'done']
+/** Item stages — the unified flow pipeline (including claude execution stage) */
+export const ITEM_STAGES: ItemStage[] = ['idea', 'plan', 'build', 'claude', 'review', 'done']
+
+/** Display stages — stages shown in the project flow view (excludes claude) */
+export const FLOW_STAGES: ItemStage[] = ['idea', 'plan', 'build', 'review', 'done']
 
 /** Human-readable stage labels */
 export const ITEM_STAGE_LABELS: Record<ItemStage, string> = {
   idea: 'Idea',
   plan: 'Plan',
   build: 'Build',
+  claude: 'Claude',
   review: 'Review',
   done: 'Done',
 }
@@ -30,12 +34,15 @@ export const ITEM_STAGE_LABELS: Record<ItemStage, string> = {
 /** Item types */
 export const ITEM_TYPES: ItemType[] = ['task', 'idea', 'bug', 'plan', 'note']
 
-/** Map old board lanes to new stages */
+/** Dependency types */
+export const DEPENDENCY_TYPES: DependencyType[] = ['blocks', 'relates_to']
+
+/** Map old board lanes to item stages */
 export const LANE_TO_STAGE: Record<BoardLane, ItemStage> = {
   backlog: 'idea',
   todo: 'plan',
   in_progress: 'build',
-  claude: 'build',
+  claude: 'claude',
   review: 'review',
   done: 'done',
 }

@@ -52,6 +52,7 @@ export const load: PageServerLoad = async ({ params }) => {
     idea: [],
     plan: [],
     build: [],
+    claude: [],
     review: [],
     done: [],
   }
@@ -74,6 +75,7 @@ export const load: PageServerLoad = async ({ params }) => {
     idea: stages.idea.length,
     plan: stages.plan.length,
     build: stages.build.length,
+    claude: stages.claude.length,
     review: stages.review.length,
     done: stages.done.length,
   }

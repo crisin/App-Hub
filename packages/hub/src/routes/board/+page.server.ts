@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { getDb } from '$lib/server/db'
-import type { BoardIssue, BoardLane } from '@apphub/shared'
+import type { Item, ItemStage } from '@apphub/shared'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -24,26 +24,15 @@ export interface ProjectFilter {
 
 export const load: PageServerLoad = async () => {
   const db = getDb()
-  const rows = db.prepare('SELECT * FROM board_issues ORDER BY position ASC').all() as any[]
+  const rows = db.prepare('SELECT * FROM items ORDER BY position ASC').all() as any[]
 
-  const lanes: Record<BoardLane, BoardIssue[]> = {
-    backlog: [],
-    todo: [],
-    in_progress: [],
+  const stages: Record<ItemStage, Item[]> = {
+    idea: [],
+    plan: [],
+    build: [],
     claude: [],
     review: [],
     done: [],
-  }
-
-  for (const row of rows) {
-    const issue: BoardIssue = {
-      ...row,
-      labels: JSON.parse(row.labels || '[]'),
-      project_scope: row.project_scope ?? 'hub',
-    }
-    if (lanes[issue.lane as BoardLane]) {
-      lanes[issue.lane as BoardLane].push(issue)
-    }
   }
 
   // Get attachment counts
@@ -52,10 +41,25 @@ export const load: PageServerLoad = async () => {
     .all() as { issue_id: string; count: number }[]
   const attMap = new Map(attCounts.map((r) => [r.issue_id, r.count]))
 
-  // Attach attachment counts to issues
-  for (const lane of Object.values(lanes)) {
-    for (const issue of lane) {
-      ;(issue as any).attachment_count = attMap.get(issue.id) ?? 0
+  // Get blocked items
+  const blockedItems = db
+    .prepare(
+      `SELECT DISTINCT d.item_id FROM item_dependencies d
+       JOIN items blocker ON d.depends_on_id = blocker.id
+       WHERE d.dependency_type = 'blocks' AND blocker.stage != 'done'`,
+    )
+    .all() as { item_id: string }[]
+  const blockedSet = new Set(blockedItems.map((r) => r.item_id))
+
+  for (const row of rows) {
+    const item: Item = {
+      ...row,
+      labels: JSON.parse(row.labels || '[]'),
+      attachment_count: attMap.get(row.id) ?? 0,
+      is_blocked: blockedSet.has(row.id),
+    }
+    if (stages[item.stage as ItemStage]) {
+      stages[item.stage as ItemStage].push(item)
     }
   }
 
@@ -101,16 +105,16 @@ export const load: PageServerLoad = async () => {
     }
   }
 
-  // Build project filters — projects that have items on the board
+  // Build project filters — projects that have items
   const projectsWithItems = db
     .prepare(
-      `SELECT bi.project_scope as slug, COUNT(*) as count,
-              COALESCE(p.name, bi.project_scope) as name,
+      `SELECT i.project_slug as slug, COUNT(*) as count,
+              COALESCE(p.name, i.project_slug) as name,
               COALESCE(p.color, '') as color,
               COALESCE(p.icon, '') as icon
-       FROM board_issues bi
-       LEFT JOIN projects p ON bi.project_scope = p.slug
-       GROUP BY bi.project_scope
+       FROM items i
+       LEFT JOIN projects p ON i.project_slug = p.slug
+       GROUP BY i.project_slug
        ORDER BY count DESC`,
     )
     .all() as any[]
@@ -123,5 +127,5 @@ export const load: PageServerLoad = async () => {
     itemCount: p.count,
   }))
 
-  return { lanes, scopes, projectFilters }
+  return { lanes: stages, scopes, projectFilters }
 }

@@ -11,7 +11,7 @@ export const GET: RequestHandler = async ({ url }) => {
     .prepare(
       `SELECT br.*, bi.title as issue_title, bi.priority as issue_priority, bi.labels as issue_labels
        FROM branch_reviews br
-       JOIN board_issues bi ON br.issue_id = bi.id
+       JOIN items bi ON br.issue_id = bi.id
        WHERE br.status = @status
        ORDER BY br.created DESC`,
     )

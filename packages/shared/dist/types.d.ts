@@ -47,11 +47,14 @@ export interface Template {
     tags: string[];
     postCreate?: string;
 }
-/** Item stage — the flow pipeline */
-export type ItemStage = 'idea' | 'plan' | 'build' | 'review' | 'done';
+/**
+ * Item stage — the unified flow pipeline.
+ * 'claude' is a special execution stage where Claude Code works on the item.
+ */
+export type ItemStage = 'idea' | 'plan' | 'build' | 'claude' | 'review' | 'done';
 /** Item type — semantic distinction */
 export type ItemType = 'task' | 'idea' | 'bug' | 'plan' | 'note';
-/** A work item — unified representation (replaces both BoardIssue and Task) */
+/** A work item — the single source of truth for all tracked work */
 export interface Item {
     id: string;
     project_slug: string;
@@ -68,7 +71,13 @@ export interface Item {
     updated: string;
     attachment_count?: number;
     child_count?: number;
+    blocked_by_count?: number;
+    blocks_count?: number;
+    is_blocked?: boolean;
     attachments?: IssueAttachment[];
+    notes?: ClaudeNote[];
+    blocked_by?: ItemDependency[];
+    blocks?: ItemDependency[];
 }
 /** Project with computed item stats */
 export interface ProjectWithStats extends ProjectMeta {
@@ -80,9 +89,24 @@ export interface ProjectWithStats extends ProjectMeta {
     totalItems: number;
     claudeActive: boolean;
 }
-/** Board lane identifiers @deprecated Use ItemStage instead */
+/** Dependency relationship types */
+export type DependencyType = 'blocks' | 'relates_to';
+/** A dependency link between two items */
+export interface ItemDependency {
+    id: string;
+    item_id: string;
+    depends_on_id: string;
+    dependency_type: DependencyType;
+    created: string;
+    item_title?: string;
+    item_stage?: ItemStage;
+    depends_on_title?: string;
+    depends_on_stage?: ItemStage;
+    depends_on_project?: string;
+}
+/** @deprecated Use ItemStage instead */
 export type BoardLane = 'backlog' | 'todo' | 'in_progress' | 'claude' | 'review' | 'done';
-/** A hub-level kanban board issue @deprecated Use Item instead */
+/** @deprecated Use Item instead */
 export interface BoardIssue {
     id: string;
     title: string;
@@ -97,7 +121,7 @@ export interface BoardIssue {
     updated: string;
     attachments?: IssueAttachment[];
 }
-/** Claude note — progress/commit-style entry on an issue */
+/** Claude note — progress/commit-style entry on an item */
 export type ClaudeNoteType = 'progress' | 'commit' | 'error' | 'info';
 export interface ClaudeNote {
     id: string;
@@ -106,7 +130,7 @@ export interface ClaudeNote {
     message: string;
     created: string;
 }
-/** File attachment on a board issue */
+/** File attachment on an item */
 export interface IssueAttachment {
     id: string;
     issue_id: string;

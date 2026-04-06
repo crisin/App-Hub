@@ -8,7 +8,7 @@ export const load: PageServerLoad = async () => {
     .prepare(
       `SELECT br.*, bi.title as issue_title, bi.priority as issue_priority, bi.labels as issue_labels
        FROM branch_reviews br
-       JOIN board_issues bi ON br.issue_id = bi.id
+       JOIN items bi ON br.issue_id = bi.id
        WHERE br.status = 'pending'
        ORDER BY br.created DESC`,
     )
@@ -18,7 +18,7 @@ export const load: PageServerLoad = async () => {
     .prepare(
       `SELECT br.*, bi.title as issue_title, bi.priority as issue_priority, bi.labels as issue_labels
        FROM branch_reviews br
-       JOIN board_issues bi ON br.issue_id = bi.id
+       JOIN items bi ON br.issue_id = bi.id
        WHERE br.status IN ('merged', 'discarded')
        ORDER BY COALESCE(br.merged_at, br.discarded_at) DESC
        LIMIT 20`,

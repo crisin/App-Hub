@@ -35,6 +35,7 @@
     idea: { icon: '💡', color: 'var(--purple)' },
     plan: { icon: '📋', color: 'var(--info)' },
     build: { icon: '🔨', color: 'var(--warning)' },
+    claude: { icon: '✦', color: 'var(--accent)' },
     review: { icon: '🔍', color: 'var(--accent)' },
     done: { icon: '✅', color: 'var(--success)' },
   }

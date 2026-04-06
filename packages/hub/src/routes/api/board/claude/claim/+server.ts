@@ -19,9 +19,9 @@ export const POST: RequestHandler = async ({ request }) => {
   const result = db
     .prepare(
       `
-    UPDATE board_issues
-    SET assigned_to = @assignee, lane = 'in_progress', updated = @now
-    WHERE id = @id AND lane = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
+    UPDATE items
+    SET assigned_to = @assignee, stage = 'in_progress', updated = @now
+    WHERE id = @id AND stage = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
   `,
     )
     .run({ id, assignee, now })
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
     )
   }
 
-  const issue = db.prepare('SELECT * FROM board_issues WHERE id = ?').get(id) as any
+  const issue = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
   issue.labels = JSON.parse(issue.labels || '[]')
 
   logger.info('claude', 'issue.claimed', `Issue "${issue.title}" claimed by ${assignee}`, {
