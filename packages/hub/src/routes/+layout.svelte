@@ -6,15 +6,20 @@
 
   $effect(() => {
     if (browser) {
-      const theme = data.theme || localStorage.getItem('apphub-theme') || 'dark'
-      document.documentElement.setAttribute('data-theme', theme)
-      localStorage.setItem('apphub-theme', theme)
+      const mode = data.theme || localStorage.getItem('apphub-theme') || 'dark'
+      document.documentElement.setAttribute('data-theme', mode)
+      localStorage.setItem('apphub-theme', mode)
+
+      // Apply theme CSS overrides
+      if (data.themeCSS) {
+        document.documentElement.style.cssText = data.themeCSS
+      }
     }
   })
 </script>
 
 <div class="layout">
-  <nav class="sidebar">
+  <nav class="sidebar glass">
     <div class="logo">
       <span class="logo-icon">&#x2B22;</span>
       <span class="logo-text">App Hub</span>
