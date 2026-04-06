@@ -94,6 +94,8 @@
   // Attachments in edit modal
   let editAttachments = $state<IssueAttachment[]>([])
   let uploadingFile = $state(false)
+  let uploadProgress = $state('')
+  let dragOver = $state(false)
 
   // Claude notes in edit modal
   let editNotes = $state<ClaudeNote[]>([])
@@ -443,37 +445,81 @@
     }
   }
 
-  async function uploadAttachment(e: Event) {
-    if (!editingIssue) return
-    const input = e.target as HTMLInputElement
-    const file = input.files?.[0]
-    if (!file) return
+  async function uploadFiles(files: FileList | File[]) {
+    if (!editingIssue || files.length === 0) return
 
     uploadingFile = true
-    const form = new FormData()
-    form.append('file', file)
+    const fileArray = Array.from(files)
+    let uploaded = 0
 
-    const res = await fetch(`/api/board/${editingIssue.id}/attachments`, {
-      method: 'POST',
-      body: form,
+    for (const file of fileArray) {
+      uploadProgress = fileArray.length > 1 ? `${uploaded + 1}/${fileArray.length}` : file.name
+      const form = new FormData()
+      form.append('file', file)
+
+      const res = await fetch(`/api/board/${editingIssue.id}/attachments`, {
+        method: 'POST',
+        body: form,
+      })
+
+      if (res.ok) {
+        const { data: att } = await res.json()
+        editAttachments = [...editAttachments, att]
+        uploaded++
+      }
+    }
+
+    // Update attachment count on card
+    mutateLanes((l) => {
+      const lane = editingIssue!.lane
+      l[lane] = l[lane].map((i) =>
+        i.id === editingIssue!.id
+          ? ({ ...i, attachment_count: editAttachments.length } as any)
+          : i,
+      )
+      return l
     })
 
-    if (res.ok) {
-      const { data: att } = await res.json()
-      editAttachments = [...editAttachments, att]
-      // Update attachment count on card
-      mutateLanes((l) => {
-        const lane = editingIssue!.lane
-        l[lane] = l[lane].map((i) =>
-          i.id === editingIssue!.id
-            ? ({ ...i, attachment_count: editAttachments.length } as any)
-            : i,
-        )
-        return l
-      })
-    }
     uploadingFile = false
+    uploadProgress = ''
+  }
+
+  async function uploadAttachment(e: Event) {
+    const input = e.target as HTMLInputElement
+    if (input.files) await uploadFiles(input.files)
     input.value = ''
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault()
+    dragOver = false
+    if (e.dataTransfer?.files) uploadFiles(e.dataTransfer.files)
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault()
+    dragOver = true
+  }
+
+  function handleDragLeave() {
+    dragOver = false
+  }
+
+  function handlePaste(e: ClipboardEvent) {
+    if (!editingIssue) return
+    const items = e.clipboardData?.items
+    if (!items) return
+    const files: File[] = []
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault()
+      uploadFiles(files)
+    }
   }
 
   async function deleteAttachment(attId: string) {
@@ -1000,46 +1046,111 @@
         </div>
       {/if}
 
-      <div class="attachments-section">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="attachments-section"
+        class:drag-over={dragOver}
+        ondrop={handleDrop}
+        ondragover={handleDragOver}
+        ondragleave={handleDragLeave}
+        onpaste={handlePaste}
+      >
         <div class="attachments-header">
           <span class="attachments-label">Attachments ({editAttachments.length})</span>
           {#if !isEditingLocked}
             <label class="btn-ghost-sm upload-btn">
-              {uploadingFile ? 'Uploading...' : '+ Add file'}
+              {#if uploadingFile}
+                Uploading {uploadProgress}...
+              {:else}
+                + Add files
+              {/if}
               <input
                 type="file"
                 onchange={uploadAttachment}
                 hidden
+                multiple
                 accept="image/*,.pdf,.txt,.md,.csv,.html,.json"
               />
             </label>
           {/if}
         </div>
+
         {#if editAttachments.length > 0}
-          <div class="attachments-list">
-            {#each editAttachments as att (att.id)}
-              <div class="attachment-item">
-                <a
-                  href="/api/board/{editingIssue.id}/attachments/{att.id}"
-                  target="_blank"
-                  rel="noopener"
-                  class="attachment-link"
-                >
-                  <span class="att-icon">
-                    {#if att.mime_type.startsWith('image/')}&#x1F5BC;{:else if att.mime_type === 'application/pdf'}&#x1F4C4;{:else}&#x1F4DD;{/if}
-                  </span>
-                  <span class="att-name">{att.filename}</span>
-                  <span class="att-size">{formatFileSize(att.size_bytes)}</span>
-                </a>
-                {#if !isEditingLocked}
-                  <button
-                    class="btn-ghost-sm att-delete"
-                    onclick={() => deleteAttachment(att.id)}
-                    title="Remove attachment">&times;</button
+          <!-- Image previews grid -->
+          {@const images = editAttachments.filter((a) => a.mime_type.startsWith('image/'))}
+          {@const others = editAttachments.filter((a) => !a.mime_type.startsWith('image/'))}
+
+          {#if images.length > 0}
+            <div class="attachment-previews">
+              {#each images as att (att.id)}
+                <div class="preview-item">
+                  <a
+                    href="/api/board/{editingIssue.id}/attachments/{att.id}"
+                    target="_blank"
+                    rel="noopener"
+                    class="preview-link"
                   >
-                {/if}
-              </div>
-            {/each}
+                    <img
+                      src="/api/board/{editingIssue.id}/attachments/{att.id}"
+                      alt={att.filename}
+                      class="preview-img"
+                      loading="lazy"
+                    />
+                  </a>
+                  <div class="preview-info">
+                    <span class="att-name">{att.filename}</span>
+                    <span class="att-size">{formatFileSize(att.size_bytes)}</span>
+                  </div>
+                  {#if !isEditingLocked}
+                    <button
+                      class="btn-ghost-sm preview-delete"
+                      onclick={() => deleteAttachment(att.id)}
+                      title="Remove attachment">&times;</button
+                    >
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          {#if others.length > 0}
+            <div class="attachments-list">
+              {#each others as att (att.id)}
+                <div class="attachment-item">
+                  <a
+                    href="/api/board/{editingIssue.id}/attachments/{att.id}"
+                    target="_blank"
+                    rel="noopener"
+                    class="attachment-link"
+                  >
+                    <span class="att-icon">
+                      {#if att.mime_type === 'application/pdf'}&#x1F4C4;{:else if att.mime_type.startsWith('text/markdown')}&#x1F4DD;{:else}&#x1F4C3;{/if}
+                    </span>
+                    <span class="att-name">{att.filename}</span>
+                    <span class="att-size">{formatFileSize(att.size_bytes)}</span>
+                  </a>
+                  {#if !isEditingLocked}
+                    <button
+                      class="btn-ghost-sm att-delete"
+                      onclick={() => deleteAttachment(att.id)}
+                      title="Remove attachment">&times;</button
+                    >
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
+
+        {#if !isEditingLocked && !uploadingFile && editAttachments.length === 0}
+          <div class="drop-zone-hint">
+            Drop files here, paste images, or click "+ Add files"
+          </div>
+        {/if}
+
+        {#if dragOver}
+          <div class="drop-overlay">
+            Drop files to attach
           </div>
         {/if}
       </div>
@@ -2003,6 +2114,11 @@
   .attachments-section {
     border-top: 1px solid var(--border);
     padding-top: 0.75rem;
+    position: relative;
+    transition: border-color 0.15s;
+  }
+  .attachments-section.drag-over {
+    border-color: var(--accent);
   }
   .attachments-header {
     display: flex;
@@ -2011,9 +2127,11 @@
     margin-bottom: 0.5rem;
   }
   .attachments-label {
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .upload-btn {
     cursor: pointer;
@@ -2025,6 +2143,72 @@
     background: var(--accent-subtle);
   }
 
+  /* Image previews grid */
+  .attachment-previews {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+  }
+  .preview-item {
+    position: relative;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    transition: border-color 0.12s;
+  }
+  .preview-item:hover {
+    border-color: var(--accent);
+  }
+  .preview-link {
+    display: block;
+  }
+  .preview-img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+  }
+  .preview-info {
+    padding: 0.2rem 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+  }
+  .preview-info .att-name {
+    font-size: 0.62rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+  .preview-info .att-size {
+    font-size: 0.58rem;
+    color: var(--text-muted);
+  }
+  .preview-delete {
+    position: absolute;
+    top: 0.15rem;
+    right: 0.15rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.1rem 0.25rem;
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text);
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .preview-item:hover .preview-delete {
+    opacity: 1;
+  }
+  .preview-delete:hover {
+    color: var(--danger);
+    background: rgba(0, 0, 0, 0.8);
+  }
+
+  /* File list (non-images) */
   .attachments-list {
     display: flex;
     flex-direction: column;
@@ -2039,6 +2223,10 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     font-size: 0.75rem;
+    transition: border-color 0.12s;
+  }
+  .attachment-item:hover {
+    border-color: var(--accent);
   }
   .attachment-link {
     display: flex;
@@ -2075,5 +2263,31 @@
   }
   .att-delete:hover {
     color: var(--danger);
+  }
+
+  /* Drop zone */
+  .drop-zone-hint {
+    text-align: center;
+    padding: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    margin-top: 0.25rem;
+  }
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(var(--accent-rgb, 99, 102, 241), 0.08);
+    border: 2px dashed var(--accent);
+    border-radius: 6px;
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    z-index: 10;
+    pointer-events: none;
   }
 </style>
