@@ -9,6 +9,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getDb } from './db.js'
 import { logger } from './logger.js'
+import {
+  isGitRepo,
+  branchNameFromIssue,
+  createWorktree,
+  removeWorktree,
+  countBranchCommits,
+  getCurrentBranch,
+} from './git-worktree.js'
 
 export interface ClaudeRunnerStatus {
   state: 'idle' | 'running' | 'error'
@@ -236,7 +244,53 @@ export function triggerRunner(): ClaudeRunnerStatus {
     return currentStatus
   }
 
-  const { cwd: workDir, contextName } = resolved
+  const { cwd: repoRoot, contextName } = resolved
+
+  // Set up git worktree for isolated branch workflow
+  let workDir = repoRoot
+  let branchName: string | null = null
+  let worktreePath: string | null = null
+  let baseBranch = 'main'
+
+  if (isGitRepo(repoRoot)) {
+    try {
+      baseBranch = getCurrentBranch(repoRoot)
+      branchName = branchNameFromIssue(issue.id, issue.title)
+      worktreePath = createWorktree(repoRoot, branchName)
+      workDir = worktreePath
+
+      // Record the branch review in the DB
+      const reviewId = `br-${Date.now().toString(36)}`
+      db.prepare(
+        `INSERT INTO branch_reviews (id, issue_id, branch_name, project_scope, worktree_path, base_branch, status, created)
+         VALUES (@id, @issue_id, @branch_name, @project_scope, @worktree_path, @base_branch, 'pending', @created)`,
+      ).run({
+        id: reviewId,
+        issue_id: issue.id,
+        branch_name: branchName,
+        project_scope: scope,
+        worktree_path: worktreePath,
+        base_branch: baseBranch,
+        created: now,
+      })
+
+      pushOutput('system', `Branch: ${branchName}`)
+      pushOutput('system', `Worktree: ${worktreePath}`)
+    } catch (err) {
+      // Fall back to direct-write if worktree creation fails
+      const errMsg = err instanceof Error ? err.message : String(err)
+      logger.warn(
+        'claude',
+        'runner.worktree_fallback',
+        `Worktree creation failed, working directly in repo: ${errMsg}`,
+        { issueId: issue.id, error: errMsg },
+      )
+      pushOutput('system', `⚠ Worktree failed (${errMsg}), working directly`)
+      workDir = repoRoot
+      branchName = null
+      worktreePath = null
+    }
+  }
 
   // Build prompt
   const labels = JSON.parse(issue.labels || '[]').join(', ')
@@ -255,11 +309,20 @@ PRIORITY: ${issue.priority}`
   prompt += `\n\nINSTRUCTIONS:
 - Work in: ${workDir}
 - This task was picked up from the Hub kanban board (issue ${issue.id})
-- Follow the coding guidelines in CLAUDE.md if one exists
+- Follow the coding guidelines in CLAUDE.md if one exists`
+
+  if (branchName) {
+    prompt += `
+- You are working in a git worktree on branch "${branchName}"
+- COMMIT your changes with git. Always prefix commit messages with "vibe:" (e.g., "vibe: add login form validation")
+- Make small, focused commits — one per logical change
+- Do NOT push, merge, or switch branches — the user will review and merge your branch`
+  }
+
+  prompt += `
 - Track your progress by posting notes to the Hub API:
     curl -s -X POST ${HUB_URL}/api/board/${issue.id}/notes -H 'Content-Type: application/json' -d '{"type":"progress","message":"<what you are doing, max 200 chars>"}'
-    curl -s -X POST ${HUB_URL}/api/board/${issue.id}/notes -H 'Content-Type: application/json' -d '{"type":"commit","message":"<summary of changes made, max 200 chars>"}'
-  Post a "progress" note when starting a major step, and a "commit" note after completing each significant change.
+  Post a "progress" note when starting a major step.
 - When done, summarize what you changed`
 
   // Spawn claude
@@ -332,7 +395,6 @@ PRIORITY: ${issue.priority}`
         .join(' ')
         .trim()
       const summary = lastOutput.slice(0, 200) || `Completed in ${durationStr}`
-      addNote(issue.id, 'commit', summary)
 
       logger.info(
         'claude',
@@ -344,21 +406,53 @@ PRIORITY: ${issue.priority}`
           exitCode: code,
           durationMs,
           duration: durationStr,
+          branch: branchName,
         },
       )
-      // Mark as done
-      const doneNow = new Date().toISOString()
-      const maxPos = db
-        .prepare("SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'done'")
-        .get() as { max: number }
 
-      db.prepare(
-        `
-        UPDATE board_issues
-        SET lane = 'done', assigned_to = '', position = @position, updated = @now
-        WHERE id = @id
-      `,
-      ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
+      const doneNow = new Date().toISOString()
+
+      if (branchName) {
+        // Branch workflow: move to review lane
+        const commitCount = countBranchCommits(repoRoot, branchName, baseBranch)
+        addNote(
+          issue.id,
+          'commit',
+          `Branch ${branchName} ready for review (${commitCount} commits). ${summary}`,
+        )
+
+        // Update commit count in branch_reviews
+        db.prepare(
+          `UPDATE branch_reviews SET commit_count = @count WHERE branch_name = @branch`,
+        ).run({ count: commitCount, branch: branchName })
+
+        const maxPos = db
+          .prepare(
+            "SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'review'",
+          )
+          .get() as { max: number }
+
+        db.prepare(
+          `UPDATE board_issues
+           SET lane = 'review', assigned_to = '', position = @position, updated = @now
+           WHERE id = @id`,
+        ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
+      } else {
+        // No branch: move directly to done
+        addNote(issue.id, 'commit', summary)
+
+        const maxPos = db
+          .prepare(
+            "SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'done'",
+          )
+          .get() as { max: number }
+
+        db.prepare(
+          `UPDATE board_issues
+           SET lane = 'done', assigned_to = '', position = @position, updated = @now
+           WHERE id = @id`,
+        ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
+      }
 
       currentStatus = { state: 'idle' }
 
@@ -368,7 +462,6 @@ PRIORITY: ${issue.priority}`
         setTimeout(() => triggerRunner(), 2000)
       }
     } else {
-      addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)
       logger.error(
         'claude',
         'runner.failed',
@@ -379,8 +472,48 @@ PRIORITY: ${issue.priority}`
           exitCode: code,
           durationMs,
           duration: durationStr,
+          branch: branchName,
         },
       )
+
+      if (branchName) {
+        // Check if there are any commits on the failed branch
+        const commitCount = countBranchCommits(repoRoot, branchName, baseBranch)
+        if (commitCount > 0) {
+          // Partial work — still send to review
+          addNote(
+            issue.id,
+            'error',
+            `Failed (exit ${code}) after ${durationStr}, but ${commitCount} commits were made — branch sent to review`,
+          )
+          db.prepare(
+            `UPDATE branch_reviews SET commit_count = @count WHERE branch_name = @branch`,
+          ).run({ count: commitCount, branch: branchName })
+
+          const maxPos = db
+            .prepare(
+              "SELECT COALESCE(MAX(position), -1) as max FROM board_issues WHERE lane = 'review'",
+            )
+            .get() as { max: number }
+          db.prepare(
+            `UPDATE board_issues SET lane = 'review', assigned_to = '', position = @position, updated = @now WHERE id = @id`,
+          ).run({ id: issue.id, position: maxPos.max + 1, now: new Date().toISOString() })
+        } else {
+          // No commits — clean up and leave as error
+          addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)
+          try {
+            removeWorktree(repoRoot, branchName, true)
+            db.prepare(`DELETE FROM branch_reviews WHERE branch_name = @branch`).run({
+              branch: branchName,
+            })
+          } catch {
+            /* cleanup best-effort */
+          }
+        }
+      } else {
+        addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)
+      }
+
       currentStatus = {
         state: 'error',
         issueId: issue.id,

@@ -55,7 +55,7 @@ export interface Template {
 }
 
 /** Board lane identifiers */
-export type BoardLane = 'backlog' | 'todo' | 'in_progress' | 'claude' | 'done'
+export type BoardLane = 'backlog' | 'todo' | 'in_progress' | 'claude' | 'review' | 'done'
 
 /** A hub-level kanban board issue */
 export interface BoardIssue {
@@ -92,6 +92,25 @@ export interface IssueAttachment {
   mime_type: string
   size_bytes: number
   created: string
+}
+
+/** Branch review — tracks a Claude branch awaiting merge */
+export interface BranchReview {
+  id: string
+  issue_id: string
+  branch_name: string
+  project_scope: string
+  worktree_path: string
+  base_branch: string
+  status: 'pending' | 'merged' | 'discarded'
+  commit_count: number
+  created: string
+  merged_at?: string
+  discarded_at?: string
+  // Joined from board_issues for display
+  issue_title?: string
+  issue_priority?: string
+  issue_labels?: string[]
 }
 
 /** Dev API mock user for spawned projects */

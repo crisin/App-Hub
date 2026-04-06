@@ -33,5 +33,8 @@ Thumbs.db
 # Spawned projects (each has its own git repo)
 projects/
 
+# Git worktrees (Claude branch isolation)
+.worktrees/
+
 # Claude Code (keep launch.json, ignore local settings)
 .claude/settings.local.json

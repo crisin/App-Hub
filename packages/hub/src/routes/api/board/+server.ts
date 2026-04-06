@@ -17,6 +17,7 @@ export const GET: RequestHandler = async () => {
     todo: [],
     in_progress: [],
     claude: [],
+    review: [],
     done: [],
   }
 

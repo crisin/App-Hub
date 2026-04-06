@@ -142,6 +142,23 @@ function migrate(db: Database.Database) {
       value       TEXT NOT NULL,
       updated     TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS branch_reviews (
+      id            TEXT PRIMARY KEY,
+      issue_id      TEXT NOT NULL REFERENCES board_issues(id) ON DELETE CASCADE,
+      branch_name   TEXT NOT NULL UNIQUE,
+      project_scope TEXT NOT NULL DEFAULT 'hub',
+      worktree_path TEXT NOT NULL,
+      base_branch   TEXT NOT NULL DEFAULT 'main',
+      status        TEXT NOT NULL DEFAULT 'pending',
+      commit_count  INTEGER NOT NULL DEFAULT 0,
+      created       TEXT NOT NULL DEFAULT (datetime('now')),
+      merged_at     TEXT,
+      discarded_at  TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_branch_reviews_issue ON branch_reviews(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_branch_reviews_status ON branch_reviews(status);
   `)
 
   // Add password_hash column to dev_users if it doesn't exist yet

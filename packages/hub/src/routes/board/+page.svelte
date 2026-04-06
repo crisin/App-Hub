@@ -4,12 +4,13 @@
 
   let { data } = $props()
 
-  const laneOrder: BoardLane[] = ['backlog', 'todo', 'in_progress', 'claude', 'done']
+  const laneOrder: BoardLane[] = ['backlog', 'todo', 'in_progress', 'claude', 'review', 'done']
   const laneLabels: Record<BoardLane, string> = {
     backlog: 'Backlog',
     todo: 'Todo',
     in_progress: 'In Progress',
     claude: 'Claude',
+    review: 'Review',
     done: 'Done',
   }
 

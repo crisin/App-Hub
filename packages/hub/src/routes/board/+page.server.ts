@@ -20,6 +20,7 @@ export const load: PageServerLoad = async () => {
     todo: [],
     in_progress: [],
     claude: [],
+    review: [],
     done: [],
   }
 

@@ -16,7 +16,14 @@ export const TASK_STATUSES: TaskStatus[] = ['todo', 'in_progress', 'done', 'bloc
 export const TASK_PRIORITIES: TaskPriority[] = ['low', 'medium', 'high', 'critical']
 
 /** Valid board lanes */
-export const BOARD_LANES: BoardLane[] = ['backlog', 'todo', 'in_progress', 'claude', 'done']
+export const BOARD_LANES: BoardLane[] = [
+  'backlog',
+  'todo',
+  'in_progress',
+  'claude',
+  'review',
+  'done',
+]
 
 /** Human-readable board lane labels */
 export const BOARD_LANE_LABELS: Record<BoardLane, string> = {
@@ -24,6 +31,7 @@ export const BOARD_LANE_LABELS: Record<BoardLane, string> = {
   todo: 'Todo',
   in_progress: 'In Progress',
   claude: 'Claude',
+  review: 'Review',
   done: 'Done',
 }
 

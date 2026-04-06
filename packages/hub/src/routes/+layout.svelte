@@ -26,6 +26,9 @@
       <a href="/board" class="nav-link">
         <span>&#x25A7;</span> Board
       </a>
+      <a href="/reviews" class="nav-link">
+        <span>&#x2714;</span> Reviews
+      </a>
       <a href="/templates" class="nav-link">
         <span>&#x2B9E;</span> Templates
       </a>
