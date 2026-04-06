@@ -3,7 +3,10 @@
 
   let { children } = $props()
 
-  const sections = [{ href: '/settings/interface', label: 'Interface', icon: '&#x25D1;' }]
+  const sections = [
+    { href: '/settings/interface', label: 'Interface', icon: '&#x25D1;' },
+    { href: '/settings/auth', label: 'Auth & Users', icon: '&#x1F512;' },
+  ]
 </script>
 
 <div class="settings-page">

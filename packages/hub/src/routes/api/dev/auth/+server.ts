@@ -46,15 +46,10 @@ export const POST: RequestHandler = async ({ request }) => {
     | undefined
 
   if (!user) {
-    // Auto-create dev users on first login (dev convenience)
-    const id = `dev-user-${Date.now()}`
-    db.prepare('INSERT INTO dev_users (id, email, name, role) VALUES (?, ?, ?, ?)').run(
-      id,
-      email,
-      email.split('@')[0],
-      'user',
+    return json(
+      { ok: false, error: 'Account not found. Contact the creator to set up your account.' },
+      { status: 401, headers: corsHeaders(origin) },
     )
-    user = db.prepare('SELECT * FROM dev_users WHERE id = ?').get(id) as Record<string, string>
   }
 
   // Password check: if the user has a hash stored, verify it.

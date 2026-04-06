@@ -9,7 +9,7 @@ export const GET: RequestHandler = async () => {
   return json({ ok: true, data: users })
 }
 
-/** POST /api/dev/users — create a dev user */
+/** POST /api/dev/users — create a dev user (only creator/admin can create, no one can create a creator) */
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json()
   const { email, name, role } = body
@@ -18,17 +18,26 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ok: false, error: 'email and name are required' }, { status: 400 })
   }
 
+  // Prevent creating additional creator accounts
+  if (role === 'creator') {
+    return json({ ok: false, error: 'Cannot create additional Creator accounts' }, { status: 403 })
+  }
+
   const db = getDb()
   const id = `dev-user-${Date.now()}`
+  const assignedRole = role === 'admin' ? 'admin' : 'user'
 
   try {
     db.prepare('INSERT INTO dev_users (id, email, name, role) VALUES (?, ?, ?, ?)').run(
       id,
       email,
       name,
-      role ?? 'user',
+      assignedRole,
     )
-    return json({ ok: true, data: { id, email, name, role: role ?? 'user' } }, { status: 201 })
+    return json(
+      { ok: true, data: { id, email, name, role: assignedRole } },
+      { status: 201 },
+    )
   } catch (err: any) {
     return json({ ok: false, error: err.message }, { status: 400 })
   }
