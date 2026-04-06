@@ -1279,21 +1279,6 @@
   .labels-input {
     flex: 1;
   }
-  textarea {
-    font-family: var(--font);
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    outline: none;
-    resize: vertical;
-    transition: border-color 0.15s ease;
-  }
-  textarea:focus {
-    border-color: var(--accent);
-  }
 
   /* Kanban layout */
   .kanban {
