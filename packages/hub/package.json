@@ -13,10 +13,14 @@
   },
   "dependencies": {
     "@apphub/shared": "*",
+    "@sveltejs/adapter-node": "^5.2.0",
+    "@types/cytoscape": "^3.21.9",
     "better-sqlite3": "^11.9.0",
-    "gray-matter": "^4.0.3",
+    "cytoscape": "^3.33.2",
+    "cytoscape-dagre": "^2.5.0",
+    "dagre": "^0.8.5",
     "degit": "^2.8.4",
-    "@sveltejs/adapter-node": "^5.2.0"
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^7.0.0",

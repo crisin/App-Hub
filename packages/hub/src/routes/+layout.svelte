@@ -47,6 +47,9 @@
       <a href="/logs" class="nav-link" class:active={currentPath === '/logs'}>
         <span>&#x2630;</span> Logs
       </a>
+      <a href="/architecture" class="nav-link" class:active={currentPath === '/architecture'}>
+        <span>&#x2B1F;</span> Architecture
+      </a>
       <a href="/settings" class="nav-link" class:active={currentPath.startsWith('/settings')}>
         <span>&#x2699;</span> Settings
       </a>
