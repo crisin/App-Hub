@@ -155,7 +155,8 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
@@ -166,8 +167,13 @@ select {
   outline: none;
   transition: border-color 0.15s ease;
 }
+textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--accent);
 }
 
