@@ -22,12 +22,12 @@
   // Board state — owned locally, initialized from server data.
   // Using $state instead of $derived(data.stages) so SSE and optimistic
   // updates can write to it and trigger reactivity correctly.
-  let stages = $state<Record<ItemStage, ProjectItem[]>>(structuredClone(data.stages))
+  let stages = $state<Record<ItemStage, ProjectItem[]>>(JSON.parse(JSON.stringify(data.stages)))
 
   function mutateStages(
     fn: (current: Record<ItemStage, ProjectItem[]>) => Record<ItemStage, ProjectItem[]>,
   ) {
-    stages = fn(structuredClone(stages))
+    stages = fn(JSON.parse(JSON.stringify(stages)))
   }
 
   // Stage colors/icons

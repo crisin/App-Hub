@@ -9,12 +9,12 @@
   const laneLabels: Record<ItemStage, string> = ITEM_STAGE_LABELS
 
   // Board state — owned locally, initialized from server data
-  let lanes = $state<Record<ItemStage, Item[]>>(structuredClone(data.lanes))
+  let lanes = $state<Record<ItemStage, Item[]>>(JSON.parse(JSON.stringify(data.lanes)))
 
   function mutateLanes(
     fn: (current: Record<ItemStage, Item[]>) => Record<ItemStage, Item[]>,
   ) {
-    lanes = fn(structuredClone(lanes))
+    lanes = fn(JSON.parse(JSON.stringify(lanes)))
   }
 
   // Drag state
