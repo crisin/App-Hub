@@ -9,6 +9,17 @@ export interface ProjectScope {
   label: string
   type: 'hub' | 'project' | 'template'
   path: string
+  color?: string
+  icon?: string
+}
+
+/** Project info for the filter UI */
+export interface ProjectFilter {
+  slug: string
+  name: string
+  color: string
+  icon: string
+  itemCount: number
 }
 
 export const load: PageServerLoad = async () => {
@@ -35,14 +46,38 @@ export const load: PageServerLoad = async () => {
     }
   }
 
+  // Get attachment counts
+  const attCounts = db
+    .prepare('SELECT issue_id, COUNT(*) as count FROM issue_attachments GROUP BY issue_id')
+    .all() as { issue_id: string; count: number }[]
+  const attMap = new Map(attCounts.map((r) => [r.issue_id, r.count]))
+
+  // Attach attachment counts to issues
+  for (const lane of Object.values(lanes)) {
+    for (const issue of lane) {
+      ;(issue as any).attachment_count = attMap.get(issue.id) ?? 0
+    }
+  }
+
   // Build available project scopes
   const projectRoot = path.resolve(process.cwd(), '..', '..')
-  const scopes: ProjectScope[] = [{ slug: 'hub', label: 'App Hub', type: 'hub', path: projectRoot }]
+  const scopes: ProjectScope[] = [
+    { slug: 'hub', label: 'App Hub', type: 'hub', path: projectRoot, color: '#6366f1', icon: '⬡' },
+  ]
 
   // Add projects from DB
-  const projects = db.prepare('SELECT slug, name, path FROM projects ORDER BY name').all() as any[]
+  const projects = db
+    .prepare("SELECT slug, name, path, color, icon FROM projects WHERE slug != 'hub' ORDER BY name")
+    .all() as any[]
   for (const p of projects) {
-    scopes.push({ slug: p.slug, label: p.name, type: 'project', path: p.path })
+    scopes.push({
+      slug: p.slug,
+      label: p.name,
+      type: 'project',
+      path: p.path,
+      color: p.color || '',
+      icon: p.icon || '',
+    })
   }
 
   // Add templates
@@ -55,7 +90,6 @@ export const load: PageServerLoad = async () => {
 
     for (const dir of templateDirs) {
       const tmplPath = path.join(templatesDir, dir.name)
-      // Try to read template.json for a nicer label
       let label = dir.name
       try {
         const meta = JSON.parse(fs.readFileSync(path.join(tmplPath, 'template.json'), 'utf-8'))
@@ -67,5 +101,27 @@ export const load: PageServerLoad = async () => {
     }
   }
 
-  return { lanes, scopes }
+  // Build project filters — projects that have items on the board
+  const projectsWithItems = db
+    .prepare(
+      `SELECT bi.project_scope as slug, COUNT(*) as count,
+              COALESCE(p.name, bi.project_scope) as name,
+              COALESCE(p.color, '') as color,
+              COALESCE(p.icon, '') as icon
+       FROM board_issues bi
+       LEFT JOIN projects p ON bi.project_scope = p.slug
+       GROUP BY bi.project_scope
+       ORDER BY count DESC`,
+    )
+    .all() as any[]
+
+  const projectFilters: ProjectFilter[] = projectsWithItems.map((p: any) => ({
+    slug: p.slug,
+    name: p.name,
+    color: p.color || (p.slug === 'hub' ? '#6366f1' : ''),
+    icon: p.icon || (p.slug === 'hub' ? '⬡' : ''),
+    itemCount: p.count,
+  }))
+
+  return { lanes, scopes, projectFilters }
 }

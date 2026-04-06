@@ -5,6 +5,7 @@
  * Detects the claude binary automatically (PATH or Claude Desktop App bundle).
  */
 import { spawn, type ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getDb } from './db.js'
@@ -39,8 +40,49 @@ let currentStatus: ClaudeRunnerStatus = { state: 'idle' }
 let outputLines: OutputLine[] = []
 let outputSeq = 0 // increments on every new line, clients use this to poll efficiently
 
+/** History of recent runner runs (kept in-memory, max 20) */
+export interface RunHistoryEntry {
+  issueId: string
+  issueTitle: string
+  scope: string
+  startedAt: string
+  finishedAt: string
+  exitCode: number | null
+  outcome: 'success' | 'partial' | 'failed' | 'error'
+  commitCount: number
+  branch?: string
+}
+let runHistory: RunHistoryEntry[] = []
+let lastActivityAt: string | null = null
+
 const HUB_URL = `http://localhost:${process.env.PORT ?? 5174}`
 const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
+
+/**
+ * SSE Event Bus — emits typed events for real-time client updates.
+ * Events:
+ *   'output'  — new OutputLine(s) added
+ *   'status'  — runner state changed (idle/running/error)
+ *   'board'   — board data changed (issue moved between lanes)
+ */
+export const runnerEvents = new EventEmitter()
+runnerEvents.setMaxListeners(20) // single-user tool, but allow a few tabs
+
+/** Emit a typed SSE event to all connected clients */
+function emitSSE(event: string, data: unknown) {
+  runnerEvents.emit('sse', { event, data })
+}
+
+/** Emit board refresh hint — tells clients to re-fetch board data */
+export function emitBoardChanged() {
+  emitSSE('board', { changed: true, ts: Date.now() })
+}
+
+function addHistoryEntry(entry: RunHistoryEntry) {
+  runHistory.unshift(entry)
+  if (runHistory.length > 20) runHistory = runHistory.slice(0, 20)
+  lastActivityAt = entry.finishedAt
+}
 
 /** Add a claude note to an issue directly via SQLite */
 function addNote(issueId: string, type: 'progress' | 'commit' | 'error' | 'info', message: string) {
@@ -124,15 +166,84 @@ function findClaude(): string | null {
 }
 
 function pushOutput(ch: OutputLine['ch'], text: string) {
+  const newLines: OutputLine[] = []
   const lines = text.split('\n')
   for (const line of lines) {
     if (line.length === 0 && ch !== 'system') continue
-    outputLines.push({ ts: Date.now(), ch, text: line })
+    const entry: OutputLine = { ts: Date.now(), ch, text: line }
+    outputLines.push(entry)
+    newLines.push(entry)
     outputSeq++
   }
   // Keep max 2000 lines
   if (outputLines.length > 2000) {
     outputLines = outputLines.slice(-1500)
+  }
+  // Push to SSE clients
+  if (newLines.length > 0) {
+    emitSSE('output', { seq: outputSeq, lines: newLines })
+  }
+}
+
+/** Update status and emit SSE event */
+function setStatus(status: ClaudeRunnerStatus) {
+  currentStatus = status
+  emitSSE('status', {
+    state: status.state,
+    issueId: status.issueId,
+    issueTitle: status.issueTitle,
+    startedAt: status.startedAt,
+    error: status.error,
+    elapsedMs: status.state === 'running' && status.startedAt
+      ? Date.now() - new Date(status.startedAt).getTime()
+      : null,
+    lastActivityAt,
+    history: runHistory,
+  })
+}
+
+/**
+ * Clean up stale runner assignments on server startup.
+ * If the server crashed or restarted while Claude was working,
+ * issues may be stuck with assigned_to='claude-runner' and no process running.
+ */
+export function cleanupStaleAssignments(): number {
+  try {
+    const db = getDb()
+    // Find issues still assigned to claude-runner
+    const staleIssues = db
+      .prepare(
+        "SELECT id, title, lane FROM board_issues WHERE assigned_to = 'claude-runner'",
+      )
+      .all() as { id: string; title: string; lane: string }[]
+
+    if (staleIssues.length === 0) return 0
+
+    const now = new Date().toISOString()
+    for (const issue of staleIssues) {
+      // Move back to claude lane (re-queue) and clear assignment
+      db.prepare(
+        `UPDATE board_issues
+         SET assigned_to = '', lane = 'claude', updated = @now
+         WHERE id = @id`,
+      ).run({ id: issue.id, now })
+
+      addNote(
+        issue.id,
+        'error',
+        `Stale assignment cleared on server restart (was in ${issue.lane})`,
+      )
+      logger.warn(
+        'claude',
+        'runner.stale_cleanup',
+        `Reset stale assignment for "${issue.title}" (${issue.id})`,
+      )
+    }
+
+    return staleIssues.length
+  } catch (e) {
+    logger.error('claude', 'runner.stale_cleanup_error', String(e))
+    return 0
   }
 }
 
@@ -144,6 +255,23 @@ export function getRunnerStatus(): ClaudeRunnerStatus {
       .map((l) => l.text)
       .join('\n')
       .slice(-4000),
+  }
+}
+
+/** Get extended runner status with history and timing info */
+export function getRunnerStatusExtended() {
+  const base = getRunnerStatus()
+  const elapsed =
+    base.state === 'running' && base.startedAt
+      ? Date.now() - new Date(base.startedAt).getTime()
+      : null
+
+  return {
+    ...base,
+    elapsedMs: elapsed,
+    lastActivityAt,
+    history: runHistory,
+    outputLineCount: outputLines.length,
   }
 }
 
@@ -177,7 +305,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
 
   const claudeBin = findClaude()
   if (!claudeBin) {
-    currentStatus = { state: 'error', error: 'Claude CLI not found' }
+    setStatus({ state: 'error', error: 'Claude CLI not found' })
     logger.error('claude', 'runner.error', 'Claude CLI binary not found on system')
     return currentStatus
   }
@@ -198,7 +326,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
     .get() as any
 
   if (!issue) {
-    currentStatus = { state: 'idle' }
+    setStatus({ state: 'idle' })
     return currentStatus
   }
 
@@ -215,9 +343,11 @@ export function triggerRunner(): ClaudeRunnerStatus {
     .run({ id: issue.id, now })
 
   if (result.changes === 0) {
-    currentStatus = { state: 'idle' }
+    setStatus({ state: 'idle' })
     return currentStatus
   }
+
+  emitBoardChanged()
 
   addNote(issue.id, 'info', `Claimed by claude-runner (priority: ${issue.priority})`)
 
@@ -235,12 +365,12 @@ export function triggerRunner(): ClaudeRunnerStatus {
         scope,
       },
     )
-    currentStatus = {
+    setStatus({
       state: 'error',
       issueId: issue.id,
       issueTitle: issue.title,
       error: `Scope "${scope}" not found`,
-    }
+    })
     return currentStatus
   }
 
@@ -335,12 +465,12 @@ PRIORITY: ${issue.priority}`
   if (issue.description) pushOutput('system', `Description: ${issue.description.slice(0, 200)}`)
   pushOutput('system', '─'.repeat(60))
 
-  currentStatus = {
+  setStatus({
     state: 'running',
     issueId: issue.id,
     issueTitle: issue.title,
     startedAt: now,
-  }
+  })
 
   console.log(`[claude-runner] Starting: ${issue.title} (${issue.id}) [scope: ${scope}]`)
   logger.info(
@@ -454,7 +584,20 @@ PRIORITY: ${issue.priority}`
         ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
       }
 
-      currentStatus = { state: 'idle' }
+      addHistoryEntry({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        scope,
+        startedAt: now,
+        finishedAt: new Date().toISOString(),
+        exitCode: code,
+        outcome: 'success',
+        commitCount: branchName ? countBranchCommits(repoRoot, branchName, baseBranch) : 0,
+        branch: branchName || undefined,
+      })
+
+      setStatus({ state: 'idle' })
+      emitBoardChanged()
 
       // Check if there are more issues to process
       if (hasUnclaimedClaudeIssues()) {
@@ -514,12 +657,26 @@ PRIORITY: ${issue.priority}`
         addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)
       }
 
-      currentStatus = {
+      const failCommits = branchName ? countBranchCommits(repoRoot, branchName, baseBranch) : 0
+      addHistoryEntry({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        scope,
+        startedAt: now,
+        finishedAt: new Date().toISOString(),
+        exitCode: code,
+        outcome: failCommits > 0 ? 'partial' : 'failed',
+        commitCount: failCommits,
+        branch: branchName || undefined,
+      })
+
+      setStatus({
         state: 'error',
         issueId: issue.id,
         issueTitle: issue.title,
         error: `Claude exited with code ${code}`,
-      }
+      })
+      emitBoardChanged()
     }
 
     currentProcess = null
@@ -532,12 +689,23 @@ PRIORITY: ${issue.priority}`
       title: issue.title,
       error: err.message,
     })
-    currentStatus = {
+    addHistoryEntry({
+      issueId: issue.id,
+      issueTitle: issue.title,
+      scope,
+      startedAt: now,
+      finishedAt: new Date().toISOString(),
+      exitCode: null,
+      outcome: 'error',
+      commitCount: 0,
+      branch: branchName || undefined,
+    })
+    setStatus({
       state: 'error',
       issueId: issue.id,
       issueTitle: issue.title,
       error: err.message,
-    }
+    })
     currentProcess = null
   })
 

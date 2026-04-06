@@ -4,7 +4,7 @@ import { getDb } from '$lib/server/db'
 import { randomUUID } from 'node:crypto'
 import { BOARD_LANES } from '@apphub/shared'
 import type { BoardIssue, BoardLane } from '@apphub/shared'
-import { autoTriggerIfNeeded } from '$lib/server/claude-runner'
+import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
 import { logger } from '$lib/server/logger'
 
 /** GET /api/board — list all issues grouped by lane */
@@ -92,6 +92,8 @@ export const POST: RequestHandler = async ({ request }) => {
       project_scope: scope,
     },
   )
+
+  emitBoardChanged()
 
   // Auto-trigger Claude runner if issue was created in the claude lane
   if (targetLane === 'claude') {

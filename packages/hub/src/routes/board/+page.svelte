@@ -34,8 +34,45 @@
   let dragSourceLane = $state<BoardLane | null>(null)
   let dragOverLane = $state<BoardLane | null>(null)
 
-  // Project scopes from server
+  // Project scopes and filters from server
   let scopes = $derived(data.scopes)
+  let projectFilters = $derived(data.projectFilters ?? [])
+
+  // Project filter state — which projects to show (empty = show all)
+  let activeProjectFilters = $state<Set<string>>(new Set())
+
+  function toggleProjectFilter(slug: string) {
+    const next = new Set(activeProjectFilters)
+    if (next.has(slug)) {
+      next.delete(slug)
+    } else {
+      next.add(slug)
+    }
+    activeProjectFilters = next
+  }
+
+  function clearProjectFilter() {
+    activeProjectFilters = new Set()
+  }
+
+  // Filtered lanes — apply project filter
+  let filteredLanes = $derived.by(() => {
+    if (activeProjectFilters.size === 0) return lanes
+    const filtered: Record<BoardLane, BoardIssue[]> = {
+      backlog: [],
+      todo: [],
+      in_progress: [],
+      claude: [],
+      review: [],
+      done: [],
+    }
+    for (const lane of laneOrder) {
+      filtered[lane] = lanes[lane].filter((issue) =>
+        activeProjectFilters.has(issue.project_scope || 'hub'),
+      )
+    }
+    return filtered
+  })
 
   // New issue form
   let showNewIssue = $state(false)
@@ -64,6 +101,14 @@
   // Confirm delete
   let confirmDeleteId = $state('')
 
+  // Check if an issue is locked (being worked on by Claude)
+  function isLocked(issue: BoardIssue): boolean {
+    return issue.assigned_to === 'claude-runner'
+  }
+
+  // Check if the detail drawer is in read-only mode
+  let isEditingLocked = $derived(editingIssue ? isLocked(editingIssue) : false)
+
   // Claude runner status — polled from server
   let runnerStatus = $state<{
     state: 'idle' | 'running' | 'error'
@@ -72,16 +117,45 @@
     startedAt?: string
     error?: string
     output?: string
+    elapsedMs?: number | null
+    lastActivityAt?: string | null
+    history?: Array<{
+      issueId: string
+      issueTitle: string
+      scope: string
+      startedAt: string
+      finishedAt: string
+      exitCode: number | null
+      outcome: 'success' | 'partial' | 'failed' | 'error'
+      commitCount: number
+      branch?: string
+    }>
   }>({ state: 'idle' })
-  let runnerPolling = $state(false)
+
+  function formatElapsed(ms: number): string {
+    if (ms < 60000) return `${Math.round(ms / 1000)}s`
+    const mins = Math.floor(ms / 60000)
+    const secs = Math.round((ms % 60000) / 1000)
+    return `${mins}m ${secs}s`
+  }
+
+  function timeAgo(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime()
+    if (diff < 60000) return 'just now'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    return `${Math.floor(diff / 86400000)}d ago`
+  }
 
   // Combined Claude status — merges board state + runner process state
   let claudeStatus = $derived.by(() => {
     if (runnerStatus.state === 'running') {
+      const elapsed = liveElapsed
+      const elapsedStr = elapsed ? ` (${formatElapsed(elapsed)})` : ''
       return {
         state: 'working' as const,
         label: 'Working',
-        detail: runnerStatus.issueTitle ?? 'Processing...',
+        detail: `${runnerStatus.issueTitle ?? 'Processing...'}${elapsedStr}`,
         count: 1,
       }
     }
@@ -103,10 +177,14 @@
         count: pendingIssues.length,
       }
     }
+
+    // Show last activity info when idle
+    const lastAct = runnerStatus.lastActivityAt
+    const detail = lastAct ? `Last active ${timeAgo(lastAct)}` : 'No tasks assigned'
     return {
       state: 'idle' as const,
       label: 'Idle',
-      detail: 'No tasks assigned',
+      detail,
       count: 0,
     }
   })
@@ -131,38 +209,8 @@
     }
   }
 
-  // Poll runner status + output while running
-  async function pollRunnerStatus() {
-    if (runnerPolling) return
-    runnerPolling = true
-    try {
-      while (true) {
-        const res = await fetch(`/api/board/claude/output?since=${outputSeq}`)
-        if (res.ok) {
-          const { data: d } = await res.json()
-          runnerStatus = {
-            state: d.state,
-            issueId: d.issueId,
-            issueTitle: d.issueTitle,
-            startedAt: d.startedAt,
-            error: d.error,
-          }
-          if (d.lines.length > 0) {
-            outputLines = [...outputLines, ...d.lines]
-            outputSeq = d.seq
-            scrollToBottom()
-          }
-          if (d.state !== 'running') break
-        } else {
-          break
-        }
-        await new Promise((r) => setTimeout(r, 1500))
-      }
-    } finally {
-      runnerPolling = false
-      invalidateBoard()
-    }
-  }
+  // --- Real-time updates via SSE ---
+  let eventSource: EventSource | null = null
 
   async function invalidateBoard() {
     const res = await fetch('/api/board')
@@ -180,9 +228,13 @@
     const res = await fetch('/api/board/claude/run', { method: 'POST' })
     if (res.ok) {
       const { data: d } = await res.json()
-      runnerStatus = d
-      if (d.state === 'running') {
-        pollRunnerStatus()
+      runnerStatus = {
+        ...runnerStatus,
+        state: d.state,
+        issueId: d.issueId,
+        issueTitle: d.issueTitle,
+        startedAt: d.startedAt,
+        error: d.error,
       }
     }
   }
@@ -192,28 +244,117 @@
     if (showOutput) scrollToBottom()
   }
 
-  // Check initial runner status on mount and load existing output
+  /** Fetch initial state (output + status + history) on mount */
+  async function loadInitialState() {
+    try {
+      const res = await fetch('/api/board/claude/output?since=0')
+      if (!res.ok) return
+      const { data: d } = await res.json()
+      runnerStatus = {
+        state: d.state,
+        issueId: d.issueId,
+        issueTitle: d.issueTitle,
+        startedAt: d.startedAt,
+        error: d.error,
+        elapsedMs: d.elapsedMs,
+        lastActivityAt: d.lastActivityAt,
+        history: d.history,
+      }
+      if (d.lines.length > 0) {
+        outputLines = d.lines
+        outputSeq = d.seq
+      }
+      if (d.state === 'running') {
+        showOutput = true
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Connect SSE stream for real-time updates */
+  function connectSSE() {
+    if (eventSource) eventSource.close()
+
+    const es = new EventSource('/api/board/events')
+    eventSource = es
+
+    es.addEventListener('output', (e) => {
+      const { seq, lines: newLines } = JSON.parse(e.data)
+      if (newLines.length > 0) {
+        outputLines = [...outputLines, ...newLines]
+        outputSeq = seq
+        // Keep client-side buffer reasonable
+        if (outputLines.length > 2000) {
+          outputLines = outputLines.slice(-1500)
+        }
+        scrollToBottom()
+      }
+    })
+
+    es.addEventListener('status', (e) => {
+      const d = JSON.parse(e.data)
+      const wasRunning = runnerStatus.state === 'running'
+      runnerStatus = {
+        ...runnerStatus,
+        state: d.state,
+        issueId: d.issueId,
+        issueTitle: d.issueTitle,
+        startedAt: d.startedAt,
+        error: d.error,
+        elapsedMs: d.elapsedMs,
+        lastActivityAt: d.lastActivityAt,
+        history: d.history,
+      }
+      // Auto-open output panel when Claude starts running
+      if (d.state === 'running' && !wasRunning) {
+        outputLines = []
+        outputSeq = 0
+        showOutput = true
+      }
+    })
+
+    es.addEventListener('board', () => {
+      invalidateBoard()
+    })
+
+    es.onerror = () => {
+      // Auto-reconnect is built into EventSource
+    }
+  }
+
+  // Elapsed time live counter — updates every second while running
+  let elapsedTick = $state(0)
+  let elapsedInterval: ReturnType<typeof setInterval> | null = null
+
+  $effect(() => {
+    if (runnerStatus.state === 'running' && runnerStatus.startedAt) {
+      if (!elapsedInterval) {
+        elapsedInterval = setInterval(() => { elapsedTick++ }, 1000)
+      }
+    } else {
+      if (elapsedInterval) {
+        clearInterval(elapsedInterval)
+        elapsedInterval = null
+        elapsedTick = 0
+      }
+    }
+  })
+
+  // Update elapsed display reactively (elapsedTick triggers re-derive)
+  let liveElapsed = $derived.by(() => {
+    if (runnerStatus.state !== 'running' || !runnerStatus.startedAt) return null
+    // Reference elapsedTick to re-derive every second
+    void elapsedTick
+    return Date.now() - new Date(runnerStatus.startedAt).getTime()
+  })
+
   onMount(() => {
-    fetch('/api/board/claude/output?since=0')
-      .then((r) => r.json())
-      .then(({ data: d }) => {
-        runnerStatus = {
-          state: d.state,
-          issueId: d.issueId,
-          issueTitle: d.issueTitle,
-          startedAt: d.startedAt,
-          error: d.error,
-        }
-        if (d.lines.length > 0) {
-          outputLines = d.lines
-          outputSeq = d.seq
-        }
-        if (d.state === 'running') {
-          showOutput = true
-          pollRunnerStatus()
-        }
-      })
-      .catch(() => {})
+    loadInitialState().then(() => connectSSE())
+    return () => {
+      if (eventSource) eventSource.close()
+      if (elapsedInterval) clearInterval(elapsedInterval)
+    }
   })
 
   async function createIssue() {
@@ -374,6 +515,10 @@
   // --- Drag and Drop ---
 
   function onDragStart(e: DragEvent, issue: BoardIssue, lane: BoardLane) {
+    if (isLocked(issue)) {
+      e.preventDefault()
+      return
+    }
     draggedIssue = issue
     dragSourceLane = lane
     e.dataTransfer!.effectAllowed = 'move'
@@ -454,7 +599,7 @@
   }
 </script>
 
-<div class="board-page" class:sidebar-open={showOutput}>
+<div class="board-page" class:sidebar-open={showOutput} class:drawer-open={!!editingIssue}>
   <header class="page-header">
     <div>
       <h1>Board</h1>
@@ -488,6 +633,34 @@
       </button>
     </div>
   </header>
+
+  {#if projectFilters.length > 1}
+    <div class="project-filter-bar">
+      <span class="filter-label">Projects</span>
+      <div class="filter-chips">
+        <button
+          class="filter-chip"
+          class:active={activeProjectFilters.size === 0}
+          onclick={clearProjectFilter}
+        >
+          All
+        </button>
+        {#each projectFilters as pf}
+          <button
+            class="filter-chip"
+            class:active={activeProjectFilters.has(pf.slug)}
+            onclick={() => toggleProjectFilter(pf.slug)}
+          >
+            {#if pf.color}
+              <span class="filter-dot" style="background: {pf.color}"></span>
+            {/if}
+            {pf.icon || ''} {pf.name}
+            <span class="filter-count">{pf.itemCount}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   {#if showNewIssue}
     <div class="new-issue-form">
@@ -544,16 +717,17 @@
             {#if lane === 'claude'}<span class="claude-icon">&#x2726;</span>{/if}
             {laneLabels[lane]}
           </h2>
-          <span class="lane-count">{lanes[lane].length}</span>
+          <span class="lane-count">{filteredLanes[lane].length}</span>
         </div>
 
         <div class="lane-cards">
-          {#each lanes[lane] as issue (issue.id)}
+          {#each filteredLanes[lane] as issue (issue.id)}
             <button
               type="button"
               class="issue-card"
               class:dragging={draggedIssue?.id === issue.id}
-              draggable="true"
+              class:locked={isLocked(issue)}
+              draggable={!isLocked(issue)}
               ondragstart={(e) => onDragStart(e, issue, lane)}
               ondragend={onDragEnd}
               onclick={() => openEdit(issue)}
@@ -647,8 +821,34 @@
       }}
     >
       {#if outputLines.length === 0}
-        <div class="output-empty">
-          No output yet. Run Claude on a queued issue to see output here.
+        {@const pendingIssues = lanes.claude.filter((i) => !i.assigned_to)}
+        <div class="output-empty-state">
+          {#if pendingIssues.length > 0}
+            <div class="empty-icon">&#x2726;</div>
+            <div class="empty-title">{pendingIssues.length} issue{pendingIssues.length > 1 ? 's' : ''} queued</div>
+            <div class="queued-list">
+              {#each pendingIssues as qi}
+                <div class="queued-item">
+                  <span class="priority-dot {priorityClass(qi.priority)}" title={qi.priority}></span>
+                  <span class="queued-title">{qi.title}</span>
+                  {#if qi.project_scope && qi.project_scope !== 'hub'}
+                    <span class="scope-badge">{qi.project_scope}</span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+            <button class="btn-primary btn-run-claude" onclick={runClaude}>
+              &#x25B6; Run Claude
+            </button>
+          {:else if runnerStatus.state === 'error'}
+            <div class="empty-icon error-icon">&#x26A0;</div>
+            <div class="empty-title">Last run failed</div>
+            <div class="empty-detail">{runnerStatus.error}</div>
+          {:else}
+            <div class="empty-icon">&#x2726;</div>
+            <div class="empty-title">No output</div>
+            <div class="empty-detail">Drag an issue to the Claude lane and hit Run.</div>
+          {/if}
         </div>
       {:else}
         {#each outputLines as line}
@@ -666,17 +866,45 @@
         {/each}
       {/if}
     </div>
+    {#if runnerStatus.history && runnerStatus.history.length > 0}
+      <div class="history-section">
+        <div class="history-header">Recent Runs</div>
+        {#each runnerStatus.history as entry}
+          <div class="history-entry">
+            <span class="history-outcome outcome-{entry.outcome}">
+              {#if entry.outcome === 'success'}&#x2713;{:else if entry.outcome === 'partial'}&#x25D0;{:else if entry.outcome === 'failed'}&#x2717;{:else}&#x26A0;{/if}
+            </span>
+            <div class="history-info">
+              <span class="history-title">{entry.issueTitle}</span>
+              <span class="history-meta">
+                {entry.commitCount} commit{entry.commitCount !== 1 ? 's' : ''}
+                &middot; {timeAgo(entry.finishedAt)}
+                {#if entry.branch}
+                  &middot; {entry.branch}
+                {/if}
+              </span>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
-<!-- Edit Modal -->
+<!-- Detail Drawer -->
 {#if editingIssue}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal-backdrop" onclick={() => (editingIssue = null)} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-      <div class="modal-header">
-        <h2>Edit Issue</h2>
-        <div class="modal-actions-top">
+  <div class="drawer-backdrop" onclick={() => (editingIssue = null)} role="presentation"></div>
+  <div class="detail-drawer" role="dialog" tabindex="-1">
+    <div class="drawer-header">
+      <div class="drawer-title-row">
+        <h2>{isEditingLocked ? 'Issue Details' : 'Edit Issue'}</h2>
+        {#if isEditingLocked}
+          <span class="locked-badge">&#x1F512; Claude is working</span>
+        {/if}
+      </div>
+      <div class="drawer-actions-top">
+        {#if !isEditingLocked}
           {#if confirmDeleteId === editingIssue.id}
             <span class="confirm-text">Delete?</span>
             <button
@@ -693,32 +921,60 @@
               onclick={() => (confirmDeleteId = editingIssue!.id)}>&times;</button
             >
           {/if}
+        {/if}
+        <button class="btn-ghost-sm" onclick={() => (editingIssue = null)} title="Close">&larr;</button>
+      </div>
+    </div>
+
+    <div class="drawer-body">
+      <div class="drawer-field">
+        <label class="drawer-label">Title</label>
+        <input bind:value={editTitle} placeholder="Title" disabled={isEditingLocked} />
+      </div>
+
+      <div class="drawer-field">
+        <label class="drawer-label">Description</label>
+        <textarea
+          bind:value={editDescription}
+          placeholder="Description (markdown)..."
+          rows="6"
+          disabled={isEditingLocked}
+        ></textarea>
+      </div>
+
+      <div class="drawer-field-row">
+        <div class="drawer-field">
+          <label class="drawer-label">Scope</label>
+          <select bind:value={editScope} class="scope-select" disabled={isEditingLocked}>
+            {#each scopes as s}
+              <option value={s.slug}>
+                {s.type === 'hub' ? '⬡' : s.type === 'project' ? '◈' : '▤'}
+                {s.label}
+              </option>
+            {/each}
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label class="drawer-label">Priority</label>
+          <select bind:value={editPriority} disabled={isEditingLocked}>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
         </div>
       </div>
-      <input bind:value={editTitle} placeholder="Title" />
-      <textarea bind:value={editDescription} placeholder="Description (markdown)..." rows="6"
-      ></textarea>
-      <div class="form-row">
-        <select bind:value={editScope} class="scope-select">
-          {#each scopes as s}
-            <option value={s.slug}>
-              {s.type === 'hub' ? '⬡' : s.type === 'project' ? '◈' : '▤'}
-              {s.label}
-            </option>
-          {/each}
-        </select>
-        <select bind:value={editPriority}>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="critical">Critical</option>
-        </select>
+
+      <div class="drawer-field">
+        <label class="drawer-label">Labels</label>
         <input
           bind:value={editLabels}
           placeholder="Labels (comma-separated)..."
           class="labels-input"
+          disabled={isEditingLocked}
         />
       </div>
+
       {#if editNotes.length > 0}
         <div class="notes-section">
           <div class="notes-header">
@@ -743,18 +999,21 @@
           </div>
         </div>
       {/if}
+
       <div class="attachments-section">
         <div class="attachments-header">
           <span class="attachments-label">Attachments ({editAttachments.length})</span>
-          <label class="btn-ghost-sm upload-btn">
-            {uploadingFile ? 'Uploading...' : '+ Add file'}
-            <input
-              type="file"
-              onchange={uploadAttachment}
-              hidden
-              accept="image/*,.pdf,.txt,.md,.csv,.html,.json"
-            />
-          </label>
+          {#if !isEditingLocked}
+            <label class="btn-ghost-sm upload-btn">
+              {uploadingFile ? 'Uploading...' : '+ Add file'}
+              <input
+                type="file"
+                onchange={uploadAttachment}
+                hidden
+                accept="image/*,.pdf,.txt,.md,.csv,.html,.json"
+              />
+            </label>
+          {/if}
         </div>
         {#if editAttachments.length > 0}
           <div class="attachments-list">
@@ -772,23 +1031,30 @@
                   <span class="att-name">{att.filename}</span>
                   <span class="att-size">{formatFileSize(att.size_bytes)}</span>
                 </a>
-                <button
-                  class="btn-ghost-sm att-delete"
-                  onclick={() => deleteAttachment(att.id)}
-                  title="Remove attachment">&times;</button
-                >
+                {#if !isEditingLocked}
+                  <button
+                    class="btn-ghost-sm att-delete"
+                    onclick={() => deleteAttachment(att.id)}
+                    title="Remove attachment">&times;</button
+                  >
+                {/if}
               </div>
             {/each}
           </div>
         {/if}
       </div>
-      <div class="modal-footer">
-        <code class="issue-id">{editingIssue.id}</code>
+    </div>
+
+    <div class="drawer-footer">
+      <code class="issue-id">{editingIssue.id}</code>
+      {#if !isEditingLocked}
         <div>
           <button class="btn-ghost" onclick={() => (editingIssue = null)}>Cancel</button>
           <button class="btn-primary" onclick={saveEdit}>Save</button>
         </div>
-      </div>
+      {:else}
+        <button class="btn-ghost" onclick={() => (editingIssue = null)}>Close</button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -800,6 +1066,9 @@
   }
   .board-page.sidebar-open {
     margin-right: 420px;
+  }
+  .board-page.drawer-open {
+    margin-right: 480px;
   }
   .page-header {
     display: flex;
@@ -929,6 +1198,63 @@
     border: 1px solid var(--success);
     border-radius: var(--radius);
     animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  /* Project filter bar */
+  .project-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+  }
+  .filter-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .filter-chips {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.72rem;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font);
+  }
+  .filter-chip:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+  .filter-chip.active {
+    background: var(--accent-subtle);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .filter-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .filter-count {
+    font-size: 0.62rem;
+    opacity: 0.6;
+    font-family: var(--font-mono);
   }
 
   /* New issue form */
@@ -1070,6 +1396,27 @@
   .issue-card.dragging {
     opacity: 0.35;
   }
+  .issue-card.locked {
+    cursor: pointer;
+    border-color: var(--accent-muted);
+    background: var(--accent-subtle);
+    position: relative;
+  }
+  .issue-card.locked::after {
+    content: '🔒';
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    font-size: 0.6rem;
+    opacity: 0.7;
+  }
+  .issue-card.locked:hover {
+    border-color: var(--accent);
+    cursor: pointer;
+  }
+  .issue-card.locked:active {
+    cursor: pointer;
+  }
 
   .issue-top {
     display: flex;
@@ -1145,48 +1492,124 @@
     font-weight: 500;
   }
 
-  /* Modal */
-  .modal-backdrop {
+  /* Detail Drawer */
+  .drawer-backdrop {
     position: fixed;
     inset: 0;
     background: var(--bg-overlay);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
+    z-index: 99;
+    animation: fadeIn 0.15s ease-out;
   }
-  .modal {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .detail-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 480px;
+    height: 100vh;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    width: 90%;
-    max-width: 520px;
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    z-index: 100;
+    animation: drawerSlideIn 0.2s ease-out;
   }
-  .modal-header {
+  @keyframes drawerSlideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  .drawer-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
-  .modal-header h2 {
-    font-size: 1.1rem;
+  .drawer-title-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .drawer-header h2 {
+    font-size: 1rem;
     font-weight: 600;
+    margin: 0;
   }
-  .modal-actions-top {
+  .locked-badge {
+    font-size: 0.68rem;
+    color: var(--accent);
+    background: var(--accent-subtle);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .drawer-actions-top {
     display: flex;
     align-items: center;
     gap: 0.25rem;
+    flex-shrink: 0;
   }
-  .modal-footer {
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .drawer-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+  .drawer-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .drawer-field-row {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .drawer-field-row .drawer-field {
+    flex: 1;
+  }
+  .drawer-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .drawer-body input:disabled,
+  .drawer-body textarea:disabled,
+  .drawer-body select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--bg-inset);
+  }
+  .drawer-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
   }
-  .modal-footer div {
+  .drawer-footer div {
     display: flex;
     gap: 0.5rem;
   }
@@ -1352,12 +1775,59 @@
     border-radius: 3px;
   }
 
-  .output-empty {
-    padding: 2rem 1rem;
-    text-align: center;
-    color: var(--text-muted);
+  .output-empty-state {
+    padding: 2rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
     font-family: var(--font);
-    font-size: 0.8rem;
+  }
+  .empty-icon {
+    font-size: 2rem;
+    color: var(--accent);
+    opacity: 0.5;
+  }
+  .empty-icon.error-icon {
+    color: var(--danger);
+  }
+  .empty-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .empty-detail {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-align: center;
+  }
+  .queued-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .queued-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.65rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.78rem;
+  }
+  .queued-title {
+    flex: 1;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .btn-run-claude {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1.5rem;
+    font-size: 0.85rem;
   }
 
   .output-line {
@@ -1387,6 +1857,61 @@
   .line-system .line-text {
     color: var(--accent);
     font-weight: 500;
+  }
+
+  /* Run history in output sidebar */
+  .history-section {
+    border-top: 1px solid var(--border);
+    padding: 0.5rem 0;
+    flex-shrink: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .history-header {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.25rem 1rem 0.4rem;
+  }
+  .history-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.3rem 1rem;
+    font-size: 0.72rem;
+  }
+  .history-entry:hover {
+    background: var(--bg-hover);
+  }
+  .history-outcome {
+    flex-shrink: 0;
+    width: 1rem;
+    text-align: center;
+    font-size: 0.7rem;
+    line-height: 1.4;
+  }
+  .outcome-success { color: var(--success); }
+  .outcome-partial { color: var(--warning); }
+  .outcome-failed { color: var(--danger); }
+  .outcome-error { color: var(--danger); }
+  .history-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .history-title {
+    color: var(--text);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-meta {
+    font-size: 0.62rem;
+    color: var(--text-muted);
   }
 
   /* Attachment indicator on cards */

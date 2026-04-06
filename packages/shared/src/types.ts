@@ -54,10 +54,48 @@ export interface Template {
   postCreate?: string // shell command to run after cloning
 }
 
-/** Board lane identifiers */
+/** Item stage — the flow pipeline */
+export type ItemStage = 'idea' | 'plan' | 'build' | 'review' | 'done'
+
+/** Item type — semantic distinction */
+export type ItemType = 'task' | 'idea' | 'bug' | 'plan' | 'note'
+
+/** A work item — unified representation (replaces both BoardIssue and Task) */
+export interface Item {
+  id: string
+  project_slug: string
+  title: string
+  description: string
+  stage: ItemStage
+  priority: TaskPriority
+  labels: string[]
+  position: number
+  assigned_to: string
+  parent_id: string | null
+  item_type: ItemType
+  created: string
+  updated: string
+  // Joined/computed fields
+  attachment_count?: number
+  child_count?: number
+  attachments?: IssueAttachment[]
+}
+
+/** Project with computed item stats */
+export interface ProjectWithStats extends ProjectMeta {
+  path: string
+  color: string
+  icon: string
+  archived_at: string | null
+  itemCounts: Record<ItemStage, number>
+  totalItems: number
+  claudeActive: boolean // whether Claude is working on an item in this project
+}
+
+/** Board lane identifiers @deprecated Use ItemStage instead */
 export type BoardLane = 'backlog' | 'todo' | 'in_progress' | 'claude' | 'review' | 'done'
 
-/** A hub-level kanban board issue */
+/** A hub-level kanban board issue @deprecated Use Item instead */
 export interface BoardIssue {
   id: string
   title: string
@@ -67,7 +105,7 @@ export interface BoardIssue {
   labels: string[]
   position: number
   assigned_to: string
-  project_scope: string // 'hub' (default), project slug, or template slug
+  project_scope: string
   created: string
   updated: string
   attachments?: IssueAttachment[]

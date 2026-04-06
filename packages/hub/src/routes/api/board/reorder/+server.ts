@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
-import { autoTriggerIfNeeded } from '$lib/server/claude-runner'
+import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
 import { logger } from '$lib/server/logger'
 
 /** PATCH /api/board/reorder — bulk reorder issues (used by drag-and-drop) */
@@ -39,5 +39,6 @@ export const PATCH: RequestHandler = async ({ request }) => {
     autoTriggerIfNeeded()
   }
 
+  emitBoardChanged()
   return json({ ok: true })
 }

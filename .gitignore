@@ -2,7 +2,7 @@
 node_modules/
 
 # Build output
-dist/
+/dist/
 build/
 .svelte-kit/
 
@@ -31,7 +31,7 @@ Thumbs.db
 *.log
 
 # Spawned projects (each has its own git repo)
-projects/
+/projects/
 
 # Git worktrees (Claude branch isolation)
 .worktrees/

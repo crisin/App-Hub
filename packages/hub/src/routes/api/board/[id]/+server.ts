@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
-import { autoTriggerIfNeeded } from '$lib/server/claude-runner'
+import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
 import { logger } from '$lib/server/logger'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -70,6 +70,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
     lane: updated.lane,
   })
 
+  emitBoardChanged()
+
   // Auto-trigger Claude runner if issue was moved to the claude lane
   if (updates.lane === 'claude') {
     autoTriggerIfNeeded()
@@ -97,5 +99,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
   logger.info('board', 'issue.deleted', `Deleted issue "${issue.title}"`, { issueId: params.id })
 
+  emitBoardChanged()
   return json({ ok: true, data: { id: params.id } })
 }

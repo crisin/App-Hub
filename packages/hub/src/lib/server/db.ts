@@ -175,6 +175,58 @@ function migrate(db: Database.Database) {
     // column already exists — ignore
   }
 
+  // Add color, icon, archived_at columns to projects
+  for (const col of [
+    "ALTER TABLE projects ADD COLUMN color TEXT DEFAULT ''",
+    "ALTER TABLE projects ADD COLUMN icon TEXT DEFAULT ''",
+    'ALTER TABLE projects ADD COLUMN archived_at TEXT DEFAULT NULL',
+  ]) {
+    try {
+      db.exec(col)
+    } catch {
+      /* column already exists */
+    }
+  }
+
+  // --- Items table (unified work items) ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS items (
+      id            TEXT PRIMARY KEY,
+      project_slug  TEXT NOT NULL DEFAULT 'hub',
+      title         TEXT NOT NULL,
+      description   TEXT DEFAULT '',
+      stage         TEXT NOT NULL DEFAULT 'idea',
+      priority      TEXT NOT NULL DEFAULT 'medium',
+      labels        TEXT DEFAULT '[]',
+      position      INTEGER NOT NULL DEFAULT 0,
+      assigned_to   TEXT DEFAULT '',
+      parent_id     TEXT DEFAULT NULL,
+      item_type     TEXT NOT NULL DEFAULT 'task',
+      created       TEXT NOT NULL DEFAULT (datetime('now')),
+      updated       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_items_project ON items(project_slug);
+    CREATE INDEX IF NOT EXISTS idx_items_stage ON items(stage);
+    CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_items_assigned ON items(assigned_to);
+  `)
+
+  // Migrate board_issues -> items (one-time)
+  migrateToItems(db)
+
+  // Ensure "hub" project exists
+  const hubExists = db
+    .prepare("SELECT COUNT(*) as c FROM projects WHERE slug = 'hub'")
+    .get() as { c: number }
+  if (hubExists.c === 0) {
+    const now = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO projects (slug, name, description, status, template, tags, path, created, updated, color, icon)
+       VALUES ('hub', 'App Hub', 'Hub development tasks', 'active', '', '["meta"]', @path, @now, @now, '#6366f1', '⬡')`,
+    ).run({ path: process.cwd(), now })
+  }
+
   // Seed a default dev user if none exists
   const count = db.prepare('SELECT COUNT(*) as c FROM dev_users').get() as { c: number }
   if (count.c === 0) {
@@ -185,4 +237,60 @@ function migrate(db: Database.Database) {
     `,
     ).run()
   }
+}
+
+/** One-time migration: board_issues -> items */
+function migrateToItems(db: Database.Database) {
+  // Check if migration already done by looking for data in items
+  const itemCount = db.prepare('SELECT COUNT(*) as c FROM items').get() as { c: number }
+  if (itemCount.c > 0) return // already migrated
+
+  // Check if there's anything to migrate
+  let hasBoardIssues = false
+  try {
+    const biCount = db.prepare('SELECT COUNT(*) as c FROM board_issues').get() as { c: number }
+    hasBoardIssues = biCount.c > 0
+  } catch {
+    return // board_issues table doesn't exist yet
+  }
+
+  if (!hasBoardIssues) return
+
+  // Lane -> Stage mapping
+  const laneToStage: Record<string, string> = {
+    backlog: 'idea',
+    todo: 'plan',
+    in_progress: 'build',
+    claude: 'build',
+    review: 'review',
+    done: 'done',
+  }
+
+  const issues = db.prepare('SELECT * FROM board_issues').all() as any[]
+
+  const insert = db.prepare(`
+    INSERT INTO items (id, project_slug, title, description, stage, priority, labels, position, assigned_to, parent_id, item_type, created, updated)
+    VALUES (@id, @project_slug, @title, @description, @stage, @priority, @labels, @position, @assigned_to, NULL, 'task', @created, @updated)
+  `)
+
+  const txn = db.transaction(() => {
+    for (const issue of issues) {
+      insert.run({
+        id: issue.id,
+        project_slug: issue.project_scope || 'hub',
+        title: issue.title,
+        description: issue.description || '',
+        stage: laneToStage[issue.lane] || 'idea',
+        priority: issue.priority || 'medium',
+        labels: issue.labels || '[]',
+        position: issue.position || 0,
+        assigned_to: issue.assigned_to || '',
+        created: issue.created,
+        updated: issue.updated,
+      })
+    }
+  })
+
+  txn()
+  console.log(`[db] Migrated ${issues.length} board issues → items table`)
 }

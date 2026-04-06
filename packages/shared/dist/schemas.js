@@ -1,87 +1,74 @@
-import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType } from './types.js'
-
 /** Valid project statuses */
-export const PROJECT_STATUSES: ProjectStatus[] = [
-  'idea',
-  'active',
-  'paused',
-  'completed',
-  'archived',
-]
-
+export const PROJECT_STATUSES = [
+    'idea',
+    'active',
+    'paused',
+    'completed',
+    'archived',
+];
 /** Valid task statuses */
-export const TASK_STATUSES: TaskStatus[] = ['todo', 'in_progress', 'done', 'blocked']
-
+export const TASK_STATUSES = ['todo', 'in_progress', 'done', 'blocked'];
 /** Valid task priorities */
-export const TASK_PRIORITIES: TaskPriority[] = ['low', 'medium', 'high', 'critical']
-
+export const TASK_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 /** Item stages — the flow pipeline */
-export const ITEM_STAGES: ItemStage[] = ['idea', 'plan', 'build', 'review', 'done']
-
+export const ITEM_STAGES = ['idea', 'plan', 'build', 'review', 'done'];
 /** Human-readable stage labels */
-export const ITEM_STAGE_LABELS: Record<ItemStage, string> = {
-  idea: 'Idea',
-  plan: 'Plan',
-  build: 'Build',
-  review: 'Review',
-  done: 'Done',
-}
-
+export const ITEM_STAGE_LABELS = {
+    idea: 'Idea',
+    plan: 'Plan',
+    build: 'Build',
+    review: 'Review',
+    done: 'Done',
+};
 /** Item types */
-export const ITEM_TYPES: ItemType[] = ['task', 'idea', 'bug', 'plan', 'note']
-
+export const ITEM_TYPES = ['task', 'idea', 'bug', 'plan', 'note'];
 /** Map old board lanes to new stages */
-export const LANE_TO_STAGE: Record<BoardLane, ItemStage> = {
-  backlog: 'idea',
-  todo: 'plan',
-  in_progress: 'build',
-  claude: 'build',
-  review: 'review',
-  done: 'done',
-}
-
+export const LANE_TO_STAGE = {
+    backlog: 'idea',
+    todo: 'plan',
+    in_progress: 'build',
+    claude: 'build',
+    review: 'review',
+    done: 'done',
+};
 /** @deprecated Use ITEM_STAGES instead */
-export const BOARD_LANES: BoardLane[] = [
-  'backlog',
-  'todo',
-  'in_progress',
-  'claude',
-  'review',
-  'done',
-]
-
+export const BOARD_LANES = [
+    'backlog',
+    'todo',
+    'in_progress',
+    'claude',
+    'review',
+    'done',
+];
 /** @deprecated Use ITEM_STAGE_LABELS instead */
-export const BOARD_LANE_LABELS: Record<BoardLane, string> = {
-  backlog: 'Backlog',
-  todo: 'Todo',
-  in_progress: 'In Progress',
-  claude: 'Claude',
-  review: 'Review',
-  done: 'Done',
-}
-
+export const BOARD_LANE_LABELS = {
+    backlog: 'Backlog',
+    todo: 'Todo',
+    in_progress: 'In Progress',
+    claude: 'Claude',
+    review: 'Review',
+    done: 'Done',
+};
 /** Allowed attachment MIME types */
 export const ATTACHMENT_MIME_TYPES = [
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'application/pdf',
-  'text/plain',
-  'text/markdown',
-  'text/csv',
-  'text/html',
-  'application/json',
-]
-
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+    'image/svg+xml',
+    'application/pdf',
+    'text/plain',
+    'text/markdown',
+    'text/csv',
+    'text/html',
+    'application/json',
+];
 /** Max attachment size in bytes (10 MB) */
-export const ATTACHMENT_MAX_SIZE = 10 * 1024 * 1024
-
+export const ATTACHMENT_MAX_SIZE = 10 * 1024 * 1024;
 /** Default .apphub.md frontmatter template */
-export function defaultProjectMeta(name: string, slug: string, template: string): string {
-  const now = new Date().toISOString()
-  return `---
+export function defaultProjectMeta(name, slug, template) {
+    const now = new Date().toISOString();
+    return `---
 name: "${name}"
 slug: "${slug}"
 description: ""
@@ -101,12 +88,11 @@ updated: "${now}"
 - [ ] Define the core concept
 - [ ] Build MVP
 - [ ] Test and iterate
-`
+`;
 }
-
 /** Default CLAUDE.md for spawned projects */
-export function defaultClaudeMd(name: string, slug: string, template: string): string {
-  return `# ${name}
+export function defaultClaudeMd(name, slug, template) {
+    return `# ${name}
 
 ## What This Project Is
 
@@ -147,12 +133,11 @@ npx apphub task list -p ${slug}
 # Mark a task done
 npx apphub task done <task-id> -p ${slug}
 \`\`\`
-`
+`;
 }
-
 /** Default TASKS.md template */
-export function defaultTasksMd(projectName: string): string {
-  return `---
+export function defaultTasksMd(projectName) {
+    return `---
 project: "${projectName}"
 ---
 
@@ -168,5 +153,5 @@ project: "${projectName}"
 ## Done
 
 ## Blocked
-`
+`;
 }

@@ -1,5 +1,12 @@
 import type { Handle } from '@sveltejs/kit'
 import { corsHeaders } from '$lib/server/auth'
+import { cleanupStaleAssignments } from '$lib/server/claude-runner'
+
+// On server startup: reset any issues stuck with claude-runner assignment from a previous crash
+const staleCount = cleanupStaleAssignments()
+if (staleCount > 0) {
+  console.log(`[startup] Cleaned up ${staleCount} stale claude-runner assignment(s)`)
+}
 
 /**
  * Global CORS handler for /api/dev/* routes.
