@@ -62,6 +62,28 @@
   // Confirm delete
   let confirmDeleteId = $state('')
 
+  // Project description/context editing
+  let editingProjectField = $state<'description' | 'context' | null>(null)
+  let editProjectDescription = $state(data.project.description || '')
+  let editProjectContext = $state(data.project.context || '')
+
+  async function saveProjectField(field: 'description' | 'context') {
+    const value = field === 'description' ? editProjectDescription : editProjectContext
+    await fetch(`/api/projects/${project.slug}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value.trim() }),
+    })
+    editingProjectField = null
+    await invalidateAll()
+  }
+
+  function cancelProjectEdit() {
+    editProjectDescription = project.description || ''
+    editProjectContext = project.context || ''
+    editingProjectField = null
+  }
+
   // New item modal
   let showNewItem = $state(false)
   let newTitle = $state('')
@@ -343,9 +365,58 @@
           style="border-color: {project.color || 'var(--accent)'}">{project.status}</span
         >
       </div>
-      {#if project.description}
-        <p class="project-desc">{project.description}</p>
-      {/if}
+      <div class="project-meta-fields">
+        {#if editingProjectField === 'description'}
+          <div class="meta-edit">
+            <label class="meta-label">Description</label>
+            <textarea
+              class="meta-textarea"
+              bind:value={editProjectDescription}
+              onkeydown={(e) => { if (e.key === 'Escape') cancelProjectEdit(); if (e.key === 'Enter' && e.metaKey) saveProjectField('description'); }}
+              rows="2"
+            ></textarea>
+            <div class="meta-edit-actions">
+              <button class="btn-ghost btn-sm" onclick={cancelProjectEdit}>Cancel</button>
+              <button class="btn-primary btn-sm" onclick={() => saveProjectField('description')}>Save</button>
+            </div>
+          </div>
+        {:else}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <p class="project-desc editable" onclick={() => { editProjectDescription = project.description || ''; editingProjectField = 'description'; }}>
+            {project.description || 'Add a description...'}
+          </p>
+        {/if}
+
+        {#if editingProjectField === 'context'}
+          <div class="meta-edit">
+            <label class="meta-label">Context <span class="meta-hint">— passed to all issues/tasks</span></label>
+            <textarea
+              class="meta-textarea"
+              bind:value={editProjectContext}
+              onkeydown={(e) => { if (e.key === 'Escape') cancelProjectEdit(); if (e.key === 'Enter' && e.metaKey) saveProjectField('context'); }}
+              rows="3"
+              placeholder="Add context that Claude should know when working on any task in this project..."
+            ></textarea>
+            <div class="meta-edit-actions">
+              <button class="btn-ghost btn-sm" onclick={cancelProjectEdit}>Cancel</button>
+              <button class="btn-primary btn-sm" onclick={() => saveProjectField('context')}>Save</button>
+            </div>
+          </div>
+        {:else if project.context}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <p class="project-context editable" onclick={() => { editProjectContext = project.context || ''; editingProjectField = 'context'; }}>
+            <span class="context-label">Context:</span> {project.context}
+          </p>
+        {:else}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <p class="project-context editable placeholder" onclick={() => { editProjectContext = ''; editingProjectField = 'context'; }}>
+            + Add project context
+          </p>
+        {/if}
+      </div>
     </div>
     <div class="header-right">
       <div class="stage-summary">
@@ -716,10 +787,88 @@
     font-weight: 700;
     margin: 0;
   }
+  .project-meta-fields {
+    margin-top: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
   .project-desc {
     font-size: 0.8rem;
     color: var(--text-muted);
-    margin-top: 0.25rem;
+    margin: 0;
+  }
+  .project-desc.editable,
+  .project-context.editable {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin: 0 -6px;
+    transition: background 0.15s;
+  }
+  .project-desc.editable:hover,
+  .project-context.editable:hover {
+    background: var(--surface-hover, rgba(255, 255, 255, 0.05));
+  }
+  .project-context {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+    opacity: 0.8;
+  }
+  .project-context.placeholder {
+    opacity: 0.5;
+    font-style: italic;
+  }
+  .context-label {
+    font-weight: 600;
+    opacity: 0.7;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.03em;
+  }
+  .meta-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .meta-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .meta-hint {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: 0.7;
+  }
+  .meta-textarea {
+    width: 100%;
+    min-width: 300px;
+    padding: 0.4rem 0.5rem;
+    background: var(--surface, #1a1a2e);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .meta-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .meta-edit-actions {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+  }
+  .btn-sm {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
   }
   .header-right {
     display: flex;

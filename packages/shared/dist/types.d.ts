@@ -9,6 +9,7 @@ export interface ProjectMeta {
     name: string;
     slug: string;
     description: string;
+    context?: string;
     status: ProjectStatus;
     template: string;
     tags: string[];

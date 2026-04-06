@@ -10,6 +10,7 @@ export function parseProjectMeta(content: string): Partial<ProjectMeta> {
     name: data.name ?? '',
     slug: data.slug ?? '',
     description: data.description ?? '',
+    context: data.context ?? '',
     status: data.status ?? 'idea',
     template: data.template ?? '',
     tags: Array.isArray(data.tags) ? data.tags : [],

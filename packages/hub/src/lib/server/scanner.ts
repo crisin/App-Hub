@@ -53,6 +53,7 @@ export function syncProjects(): Project[] {
       name: meta.name ?? entry.name,
       slug: meta.slug,
       description: meta.description ?? '',
+      context: meta.context ?? '',
       status: meta.status ?? 'idea',
       template: meta.template ?? '',
       tags: meta.tags ?? [],
@@ -68,11 +69,12 @@ export function syncProjects(): Project[] {
     // Upsert into SQLite
     db.prepare(
       `
-      INSERT INTO projects (slug, name, description, status, template, tags, path, created, updated, synced_at)
-      VALUES (@slug, @name, @description, @status, @template, @tags, @path, @created, @updated, datetime('now'))
+      INSERT INTO projects (slug, name, description, context, status, template, tags, path, created, updated, synced_at)
+      VALUES (@slug, @name, @description, @context, @status, @template, @tags, @path, @created, @updated, datetime('now'))
       ON CONFLICT(slug) DO UPDATE SET
         name = @name,
         description = @description,
+        context = @context,
         status = @status,
         template = @template,
         tags = @tags,
@@ -84,6 +86,7 @@ export function syncProjects(): Project[] {
       slug: project.slug,
       name: project.name,
       description: project.description,
+      context: project.context ?? '',
       status: project.status,
       template: project.template,
       tags: JSON.stringify(project.tags),

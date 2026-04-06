@@ -71,7 +71,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
   // Update SQLite
   const fields = Object.keys(updates)
-    .filter(k => ['name', 'description', 'status', 'tags'].includes(k))
+    .filter(k => ['name', 'description', 'context', 'status', 'tags'].includes(k))
     .map(k => `${k} = @${k}`)
     .join(', ');
 
