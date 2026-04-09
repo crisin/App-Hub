@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { getDb } from '$lib/server/db'
+import { reorderItems } from '$lib/server/data'
 import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
 import { logger } from '$lib/server/logger'
 
@@ -12,34 +12,23 @@ export const PATCH: RequestHandler = async ({ request }) => {
     return json({ ok: false, error: 'moves array is required' }, { status: 400 })
   }
 
-  const db = getDb()
-  const now = new Date().toISOString()
+  const normalized = moves
+    .filter((m: any) => m.id && m.position !== undefined && m.stage)
+    .map((m: any) => ({
+      id: m.id,
+      stage: m.stage,
+      position: m.position,
+    }))
 
-  // Accept either 'lane' or 'stage' field in moves
-  const update = db.prepare(
-    'UPDATE items SET stage = @stage, position = @position, updated = @updated WHERE id = @id',
-  )
+  reorderItems(normalized)
 
-  const transaction = db.transaction(() => {
-    for (const move of moves) {
-      if (!move.id || move.position === undefined) continue
-      const stage = move.stage || move.lane
-      if (!stage) continue
-      update.run({ id: move.id, stage, position: move.position, updated: now })
-    }
-  })
-
-  transaction()
-
-  const stagesInMoves = [...new Set(moves.map((m: any) => m.stage || m.lane))]
-  logger.debug('board', 'item.reorder', `Reordered ${moves.length} items`, {
-    moveCount: moves.length,
+  const stagesInMoves = [...new Set(normalized.map((m) => m.stage))]
+  logger.debug('board', 'item.reorder', `Reordered ${normalized.length} items`, {
+    moveCount: normalized.length,
     stages: stagesInMoves,
   })
 
-  // Auto-trigger Claude runner if any item was moved to the claude stage
-  const hasClaudeMove = stagesInMoves.includes('claude')
-  if (hasClaudeMove) {
+  if (stagesInMoves.includes('claude')) {
     autoTriggerIfNeeded()
   }
 

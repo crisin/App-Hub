@@ -131,7 +131,7 @@
             <div class="card-meta">
               <span class="template">{project.template}</span>
               <span class="tasks">
-                {project.taskSummary.done}/{project.taskSummary.total} tasks
+                {project.itemSummary.done}/{project.itemSummary.total} items
               </span>
             </div>
             {#if project.tags.length > 0}

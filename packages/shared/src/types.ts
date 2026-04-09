@@ -1,11 +1,8 @@
 /** Project status lifecycle */
 export type ProjectStatus = 'idea' | 'active' | 'paused' | 'completed' | 'archived'
 
-/** Task priority levels */
-export type TaskPriority = 'low' | 'medium' | 'high' | 'critical'
-
-/** Task status */
-export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'blocked'
+/** Item priority levels */
+export type ItemPriority = 'low' | 'medium' | 'high' | 'critical'
 
 /** Project metadata stored in .apphub.md frontmatter */
 export interface ProjectMeta {
@@ -19,30 +16,6 @@ export interface ProjectMeta {
   created: string // ISO date
   updated: string // ISO date
   repo?: string // git remote URL if any
-}
-
-/** A single task from TASKS.md */
-export interface Task {
-  id: string
-  title: string
-  status: TaskStatus
-  priority: TaskPriority
-  description?: string
-  created: string
-  updated: string
-}
-
-/** Full project representation (meta + tasks + computed) */
-export interface Project extends ProjectMeta {
-  path: string
-  tasks: Task[]
-  taskSummary: {
-    total: number
-    todo: number
-    in_progress: number
-    done: number
-    blocked: number
-  }
 }
 
 /** Template definition */
@@ -71,11 +44,12 @@ export interface Item {
   title: string
   description: string
   stage: ItemStage
-  priority: TaskPriority
+  priority: ItemPriority
   labels: string[]
   position: number
   assigned_to: string
   parent_id: string | null
+  phase_id: string | null
   item_type: ItemType
   created: string
   updated: string
@@ -89,17 +63,6 @@ export interface Item {
   notes?: ClaudeNote[]
   blocked_by?: ItemDependency[]
   blocks?: ItemDependency[]
-}
-
-/** Project with computed item stats */
-export interface ProjectWithStats extends ProjectMeta {
-  path: string
-  color: string
-  icon: string
-  archived_at: string | null
-  itemCounts: Record<ItemStage, number>
-  totalItems: number
-  claudeActive: boolean
 }
 
 /** Dependency relationship types */
@@ -118,27 +81,6 @@ export interface ItemDependency {
   depends_on_title?: string
   depends_on_stage?: ItemStage
   depends_on_project?: string
-}
-
-// --- Legacy aliases (kept for migration period) ---
-
-/** @deprecated Use ItemStage instead */
-export type BoardLane = 'backlog' | 'todo' | 'in_progress' | 'claude' | 'review' | 'done'
-
-/** @deprecated Use Item instead */
-export interface BoardIssue {
-  id: string
-  title: string
-  description: string
-  lane: BoardLane
-  priority: TaskPriority
-  labels: string[]
-  position: number
-  assigned_to: string
-  project_scope: string
-  created: string
-  updated: string
-  attachments?: IssueAttachment[]
 }
 
 /** Claude note — progress/commit-style entry on an item */
@@ -162,59 +104,22 @@ export interface IssueAttachment {
   created: string
 }
 
-/** Branch review — tracks a Claude branch awaiting merge */
-export interface BranchReview {
-  id: string
-  issue_id: string
-  branch_name: string
-  project_scope: string
-  worktree_path: string
-  base_branch: string
-  status: 'pending' | 'merged' | 'discarded'
-  commit_count: number
-  created: string
-  merged_at?: string
-  discarded_at?: string
-  // Joined from items for display
-  issue_title?: string
-  issue_priority?: string
-  issue_labels?: string[]
-}
+/** Phase status */
+export type PhaseStatus = 'upcoming' | 'active' | 'completed'
 
-/** User role hierarchy: creator > admin > user */
-export type DevUserRole = 'creator' | 'admin' | 'user'
-
-/** Dev API mock user for spawned projects */
-export interface DevUser {
+/** A project phase / milestone */
+export interface Phase {
   id: string
-  email: string
+  project_slug: string
   name: string
-  avatar?: string
-  role: DevUserRole
-}
-
-/** Dev API key (service-to-service auth for spawned projects) */
-export interface DevApiKey {
-  id: string
-  userId: string
-  name: string
-  prefix: string
+  position: number
+  status: PhaseStatus
+  target_date: string | null
   created: string
-  lastUsed?: string
+  updated: string
+  // Computed fields
+  item_count?: number
+  done_count?: number
+  completion_pct?: number
 }
 
-/** Auth token response from POST /api/dev/auth */
-export interface DevAuthToken {
-  accessToken: string
-  refreshToken: string
-  expiresIn: number
-  tokenType: 'Bearer'
-  user: DevUser
-}
-
-/** API response wrapper */
-export interface ApiResponse<T = unknown> {
-  ok: boolean
-  data?: T
-  error?: string
-}

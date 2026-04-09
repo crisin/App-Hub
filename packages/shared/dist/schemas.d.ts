@@ -1,26 +1,16 @@
-import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType, DependencyType } from './types.js';
+import type { ProjectStatus, ItemPriority, ItemStage, DependencyType } from './types.js';
 /** Valid project statuses */
 export declare const PROJECT_STATUSES: ProjectStatus[];
-/** Valid task statuses */
-export declare const TASK_STATUSES: TaskStatus[];
-/** Valid task priorities */
-export declare const TASK_PRIORITIES: TaskPriority[];
+/** Valid item priorities */
+export declare const ITEM_PRIORITIES: ItemPriority[];
 /** Item stages — the unified flow pipeline (including claude execution stage) */
 export declare const ITEM_STAGES: ItemStage[];
-/** Display stages — stages shown in the project flow view (excludes claude) */
-export declare const FLOW_STAGES: ItemStage[];
 /** Human-readable stage labels */
 export declare const ITEM_STAGE_LABELS: Record<ItemStage, string>;
-/** Item types */
-export declare const ITEM_TYPES: ItemType[];
 /** Dependency types */
 export declare const DEPENDENCY_TYPES: DependencyType[];
-/** Map old board lanes to item stages */
-export declare const LANE_TO_STAGE: Record<BoardLane, ItemStage>;
-/** @deprecated Use ITEM_STAGES instead */
-export declare const BOARD_LANES: BoardLane[];
-/** @deprecated Use ITEM_STAGE_LABELS instead */
-export declare const BOARD_LANE_LABELS: Record<BoardLane, string>;
+/** Default phases seeded when creating a new project */
+export declare const DEFAULT_PHASES: string[];
 /** Allowed attachment MIME types */
 export declare const ATTACHMENT_MIME_TYPES: string[];
 /** Max attachment size in bytes (10 MB) */
@@ -29,5 +19,3 @@ export declare const ATTACHMENT_MAX_SIZE: number;
 export declare function defaultProjectMeta(name: string, slug: string, template: string): string;
 /** Default CLAUDE.md for spawned projects */
 export declare function defaultClaudeMd(name: string, slug: string, template: string): string;
-/** Default TASKS.md template */
-export declare function defaultTasksMd(projectName: string): string;

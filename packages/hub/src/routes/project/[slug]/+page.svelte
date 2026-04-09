@@ -3,7 +3,10 @@
   import { invalidateAll } from '$app/navigation'
   import type { ItemStage } from '@apphub/shared'
   import { ITEM_STAGES, ITEM_STAGE_LABELS } from '@apphub/shared'
+  import type { Phase } from '@apphub/shared'
   import type { ProjectItem } from './+page.server'
+  import SuggestPanel from '$lib/components/SuggestPanel.svelte'
+  import PhaseTimeline from '$lib/components/PhaseTimeline.svelte'
 
   let { data } = $props()
   let project = $derived(data.project)
@@ -84,6 +87,46 @@
     editingProjectField = null
   }
 
+  // Phase state
+  let phases = $state<Phase[]>(data.phases ?? [])
+  let activePhaseFilter = $state<string | null>(null)
+
+  // Filtered stages based on phase selection
+  let filteredStages = $derived.by(() => {
+    if (!activePhaseFilter) return stages
+    const filtered: Record<string, ProjectItem[]> = {}
+    for (const stage of ITEM_STAGES) {
+      filtered[stage] = (stages[stage] ?? []).filter(item => item.phase_id === activePhaseFilter)
+    }
+    return filtered as Record<ItemStage, ProjectItem[]>
+  })
+
+  async function refreshPhases() {
+    const res = await fetch(`/api/projects/${project.slug}/phases`)
+    if (res.ok) {
+      const { data: phaseData } = await res.json()
+      phases = phaseData
+    }
+  }
+
+  // AI suggestions
+  let showSuggest = $state(false)
+
+  async function acceptSuggestion(suggestion: any) {
+    await fetch(`/api/projects/${project.slug}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: suggestion.title,
+        description: suggestion.description,
+        stage: suggestion.stage,
+        priority: suggestion.priority,
+        labels: suggestion.labels,
+      }),
+    })
+    await refreshItems()
+  }
+
   // New item modal
   let showNewItem = $state(false)
   let newTitle = $state('')
@@ -122,6 +165,7 @@
       stages = itemData
       // stageCounts and totalItems auto-update via $derived
     }
+    refreshPhases()
   }
 
   // --- Drag and drop ---
@@ -429,7 +473,8 @@
         <span class="total-count">{totalItems} items</span>
       </div>
       <div class="header-actions">
-        <button class="btn-primary" onclick={() => (showNewItem = true)}>+ New Item</button>
+        <button class="btn-suggest" onclick={() => (showSuggest = !showSuggest)}>&#x2728; Suggest</button>
+        <button class="btn-primary" onclick={() => { showNewItem = true; showSuggest = false }}>+ New Item</button>
         <div class="status-switcher">
           {#each ['idea', 'active', 'paused', 'completed', 'archived'] as status}
             <button
@@ -446,10 +491,27 @@
     </div>
   </header>
 
+  {#if showSuggest}
+    <SuggestPanel
+      projectSlug={project.slug}
+      onaccept={acceptSuggestion}
+      onclose={() => (showSuggest = false)}
+    />
+  {/if}
+
+  <!-- Phase Timeline -->
+  <PhaseTimeline
+    {phases}
+    projectSlug={project.slug}
+    {activePhaseFilter}
+    onfilter={(id) => { activePhaseFilter = id }}
+    onupdate={refreshPhases}
+  />
+
   <!-- Flow Pipeline -->
   <div class="pipeline">
     {#each ITEM_STAGES as stage}
-      {@const stageItems = stages[stage] ?? []}
+      {@const stageItems = filteredStages[stage] ?? []}
       {@const config = stageConfig[stage]}
       <div
         class="stage-column"
@@ -901,6 +963,21 @@
     padding-left: 0.5rem;
     border-left: 1px solid var(--border);
   }
+  .btn-suggest {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-suggest:hover {
+    background: var(--accent-subtle);
+  }
+
   .header-actions {
     display: flex;
     align-items: center;

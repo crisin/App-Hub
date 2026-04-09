@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getDb } from './db.js'
 import { logger } from './logger.js'
+import { addClaudeNote, getUnclaimedClaudeItems, hasUnclaimedClaudeItems } from './data.js'
 import {
   isGitRepo,
   branchNameFromIssue,
@@ -84,18 +85,10 @@ function addHistoryEntry(entry: RunHistoryEntry) {
   lastActivityAt = entry.finishedAt
 }
 
-/** Add a claude note to an issue directly via SQLite */
+/** Add a claude note to an issue — delegates to data layer */
 function addNote(issueId: string, type: 'progress' | 'commit' | 'error' | 'info', message: string) {
   try {
-    const db = getDb()
-    const id = `note-${Date.now().toString(36)}`
-    const now = new Date().toISOString()
-    db.prepare(
-      `
-      INSERT INTO claude_notes (id, issue_id, type, message, created)
-      VALUES (@id, @issue_id, @type, @message, @created)
-    `,
-    ).run({ id, issue_id: issueId, type, message: message.slice(0, 200), created: now })
+    addClaudeNote(issueId, type, message)
   } catch {
     /* never let notes break the runner */
   }
@@ -375,23 +368,7 @@ export function getRunnerOutput(sinceSeq = 0): { seq: number; lines: OutputLine[
 }
 
 /** Check if there are unclaimed, unblocked issues in the Claude stage */
-export function hasUnclaimedClaudeIssues(): boolean {
-  const db = getDb()
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) as c FROM items i
-       WHERE i.stage = 'claude' AND (i.assigned_to = '' OR i.assigned_to IS NULL)
-       AND NOT EXISTS (
-         SELECT 1 FROM item_dependencies d
-         JOIN items blocker ON d.depends_on_id = blocker.id
-         WHERE d.item_id = i.id
-           AND d.dependency_type = 'blocks'
-           AND blocker.stage != 'done'
-       )`,
-    )
-    .get() as { c: number }
-  return row.c > 0
-}
+export { hasUnclaimedClaudeItems } from './data.js'
 
 /** Trigger the runner — picks the next unclaimed, unblocked Claude stage item */
 export function triggerRunner(): ClaudeRunnerStatus {
@@ -406,25 +383,10 @@ export function triggerRunner(): ClaudeRunnerStatus {
     return currentStatus
   }
 
-  // Find the top unclaimed issue — skipping blocked items
+  // Find the top unclaimed issue — skipping blocked items (via data layer)
   const db = getDb()
-  const issue = db
-    .prepare(
-      `SELECT i.* FROM items i
-       WHERE i.stage = 'claude' AND (i.assigned_to = '' OR i.assigned_to IS NULL)
-       AND NOT EXISTS (
-         SELECT 1 FROM item_dependencies d
-         JOIN items blocker ON d.depends_on_id = blocker.id
-         WHERE d.item_id = i.id
-           AND d.dependency_type = 'blocks'
-           AND blocker.stage != 'done'
-       )
-       ORDER BY
-         CASE i.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
-         i.position ASC
-       LIMIT 1`,
-    )
-    .get() as any
+  const unclaimedItems = getUnclaimedClaudeItems()
+  const issue = unclaimedItems[0] as any
 
   if (!issue) {
     setStatus({ state: 'idle' })
@@ -525,7 +487,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
 
   // Build prompt — include project-level description and context if available
   const projectRow = db.prepare('SELECT description, context FROM projects WHERE slug = ?').get(scope) as { description?: string; context?: string } | undefined
-  const labels = JSON.parse(issue.labels || '[]').join(', ')
+  const labels = (Array.isArray(issue.labels) ? issue.labels : []).join(', ')
   let prompt = `You are working on ${contextName}.`
 
   if (projectRow?.description) {
@@ -730,7 +692,7 @@ PRIORITY: ${issue.priority}`
       emitBoardChanged()
 
       // Check if there are more issues to process
-      if (hasUnclaimedClaudeIssues()) {
+      if (hasUnclaimedClaudeItems()) {
         console.log('[claude-runner] More issues in Claude lane, starting next...')
         setTimeout(() => triggerRunner(), 2000)
       }
@@ -845,7 +807,7 @@ PRIORITY: ${issue.priority}`
 /** Auto-trigger: call this whenever an issue enters the Claude lane */
 export function autoTriggerIfNeeded() {
   if (currentStatus.state === 'running') return
-  if (hasUnclaimedClaudeIssues()) {
+  if (hasUnclaimedClaudeItems()) {
     console.log('[claude-runner] Auto-triggering: unclaimed issue detected in Claude lane')
     triggerRunner()
   }

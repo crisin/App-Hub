@@ -1,25 +1,19 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
+import { fileURLToPath } from 'node:url'
 import { hubFetch } from '../lib/api.js'
+import { withSpinner } from '../lib/withSpinner.js'
+import { ITEM_STAGES, ITEM_STAGE_LABELS } from '@apphub/shared'
 
 export const boardCommand = new Command('board').description('Manage the hub kanban board')
 
 boardCommand
   .command('list')
   .alias('ls')
-  .description('List all board issues')
-  .option('-l, --lane <lane>', 'Filter by lane (backlog, todo, in_progress, claude, done)')
-  .action(async (options: { lane?: string }) => {
-    const lanes = await hubFetch('/api/board')
-
-    const laneOrder = ['backlog', 'todo', 'in_progress', 'claude', 'done']
-    const laneLabels: Record<string, string> = {
-      backlog: 'Backlog',
-      todo: 'Todo',
-      in_progress: 'In Progress',
-      claude: 'Claude',
-      done: 'Done',
-    }
+  .description('List all board items')
+  .option('-s, --stage <stage>', `Filter by stage (${ITEM_STAGES.join(', ')})`)
+  .action(async (options: { stage?: string }) => {
+    const stages = await withSpinner('Loading board...', () => hubFetch('/api/board'))
 
     const priorityColors: Record<string, (s: string) => string> = {
       low: chalk.blue,
@@ -28,23 +22,23 @@ boardCommand
       critical: chalk.bgRed.white,
     }
 
-    const lanesToShow = options.lane ? [options.lane] : laneOrder
+    const stagesToShow = options.stage ? [options.stage] : ITEM_STAGES
 
-    for (const lane of lanesToShow) {
-      const issues = lanes[lane] ?? []
-      if (issues.length === 0 && options.lane) {
-        console.log(chalk.dim(`  No issues in ${laneLabels[lane]}.`))
+    for (const stage of stagesToShow) {
+      const items = stages[stage] ?? []
+      if (items.length === 0 && options.stage) {
+        console.log(chalk.dim(`  No items in ${ITEM_STAGE_LABELS[stage as keyof typeof ITEM_STAGE_LABELS] ?? stage}.`))
         continue
       }
-      if (issues.length === 0) continue
+      if (items.length === 0) continue
 
-      console.log(chalk.bold(`\n  ${laneLabels[lane]} (${issues.length})`))
-      for (const issue of issues) {
-        const pColor = priorityColors[issue.priority] ?? chalk.dim
-        const labels = issue.labels.length ? chalk.dim(` [${issue.labels.join(', ')}]`) : ''
-        const assigned = issue.assigned_to ? chalk.magenta(` <- ${issue.assigned_to}`) : ''
+      console.log(chalk.bold(`\n  ${ITEM_STAGE_LABELS[stage as keyof typeof ITEM_STAGE_LABELS] ?? stage} (${items.length})`))
+      for (const item of items) {
+        const pColor = priorityColors[item.priority] ?? chalk.dim
+        const labels = item.labels?.length ? chalk.dim(` [${item.labels.join(', ')}]`) : ''
+        const assigned = item.assigned_to ? chalk.magenta(` <- ${item.assigned_to}`) : ''
         console.log(
-          `    ${chalk.dim(issue.id)} ${issue.title} ${pColor(issue.priority)}${labels}${assigned}`,
+          `    ${chalk.dim(item.id)} ${item.title} ${pColor(item.priority)}${labels}${assigned}`,
         )
       }
     }
@@ -53,62 +47,67 @@ boardCommand
 
 boardCommand
   .command('add <title>')
-  .description('Add an issue to the board')
-  .option('-l, --lane <lane>', 'Target lane', 'backlog')
+  .description('Add an item to the board')
+  .option('-s, --stage <stage>', 'Target stage', ITEM_STAGES[0])
   .option('--priority <priority>', 'Priority (low, medium, high, critical)', 'medium')
   .option('--labels <labels>', 'Comma-separated labels')
-  .option('-d, --description <desc>', 'Issue description')
+  .option('-d, --description <desc>', 'Item description')
   .action(
     async (
       title: string,
-      options: { lane: string; priority: string; labels?: string; description?: string },
+      options: { stage: string; priority: string; labels?: string; description?: string },
     ) => {
-      const issue = await hubFetch('/api/board', {
-        method: 'POST',
-        body: JSON.stringify({
-          title,
-          lane: options.lane,
-          priority: options.priority,
-          labels:
-            options.labels
-              ?.split(',')
-              .map((l) => l.trim())
-              .filter(Boolean) ?? [],
-          description: options.description ?? '',
+      const item = await withSpinner('Adding item...', () =>
+        hubFetch('/api/board', {
+          method: 'POST',
+          body: JSON.stringify({
+            title,
+            stage: options.stage,
+            priority: options.priority,
+            labels:
+              options.labels
+                ?.split(',')
+                .map((l) => l.trim())
+                .filter(Boolean) ?? [],
+            description: options.description ?? '',
+          }),
         }),
-      })
+      )
 
-      console.log(chalk.green(`  + ${issue.title}`))
+      console.log(chalk.green(`  + ${item.title}`))
       console.log(
-        chalk.dim(`    id: ${issue.id}  lane: ${issue.lane}  priority: ${issue.priority}`),
+        chalk.dim(`    id: ${item.id}  stage: ${item.stage}  priority: ${item.priority}`),
       )
     },
   )
 
 boardCommand
-  .command('move <id> <lane>')
-  .description('Move an issue to a lane (backlog, todo, in_progress, claude, done)')
-  .action(async (id: string, lane: string) => {
-    const valid = ['backlog', 'todo', 'in_progress', 'claude', 'done']
-    if (!valid.includes(lane)) {
-      console.error(chalk.red(`  Invalid lane: ${lane}. Must be one of: ${valid.join(', ')}`))
+  .command('move <id> <stage>')
+  .description(`Move an item to a stage (${ITEM_STAGES.join(', ')})`)
+  .action(async (id: string, stage: string) => {
+    if (!ITEM_STAGES.includes(stage as any)) {
+      console.error(chalk.red(`  Invalid stage: ${stage}. Must be one of: ${ITEM_STAGES.join(', ')}`))
       process.exit(1)
     }
 
-    await hubFetch(`/api/board/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ lane }),
-    })
+    await withSpinner(`Moving to ${stage}...`, () =>
+      hubFetch(`/api/board/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ stage }),
+      }),
+    )
 
-    console.log(chalk.green(`  Moved ${id} -> ${lane}`))
+    console.log(chalk.green(`  Moved ${id} -> ${stage}`))
   })
 
 boardCommand
   .command('delete <id>')
   .alias('rm')
-  .description('Delete an issue')
+  .description('Delete an item')
   .action(async (id: string) => {
-    await hubFetch(`/api/board/${id}`, { method: 'DELETE' })
+    await withSpinner('Deleting...', () =>
+      hubFetch(`/api/board/${id}`, { method: 'DELETE' }),
+    )
     console.log(chalk.green(`  Deleted ${id}`))
   })
 
@@ -118,23 +117,25 @@ const claudeCmd = boardCommand.command('claude').description('Claude Code integr
 claudeCmd
   .command('list')
   .alias('ls')
-  .description('List unclaimed issues in the Claude lane')
+  .description('List unclaimed items in the Claude stage')
   .action(async () => {
-    const issues = await hubFetch('/api/board/claude')
+    const items = await withSpinner('Loading Claude items...', () =>
+      hubFetch('/api/board/claude'),
+    )
 
-    if (issues.length === 0) {
-      console.log(chalk.dim('  No unclaimed issues in Claude lane.'))
+    if (items.length === 0) {
+      console.log(chalk.dim('  No unclaimed items in Claude stage.'))
       return
     }
 
-    console.log(chalk.bold.magenta(`\n  Claude Lane (${issues.length} unclaimed)\n`))
-    for (const issue of issues) {
-      const labels = issue.labels.length ? chalk.dim(` [${issue.labels.join(', ')}]`) : ''
+    console.log(chalk.bold.magenta(`\n  Claude Stage (${items.length} unclaimed)\n`))
+    for (const item of items) {
+      const labels = item.labels?.length ? chalk.dim(` [${item.labels.join(', ')}]`) : ''
       console.log(
-        `    ${chalk.dim(issue.id)} ${issue.title} ${chalk.yellow(issue.priority)}${labels}`,
+        `    ${chalk.dim(item.id)} ${item.title} ${chalk.yellow(item.priority)}${labels}`,
       )
-      if (issue.description) {
-        console.log(chalk.dim(`      ${issue.description.slice(0, 100)}`))
+      if (item.description) {
+        console.log(chalk.dim(`      ${item.description.slice(0, 100)}`))
       }
     }
     console.log()
@@ -142,45 +143,50 @@ claudeCmd
 
 claudeCmd
   .command('claim <id>')
-  .description('Claim an issue from the Claude lane')
+  .description('Claim an item from the Claude stage')
   .option('--agent <agent_id>', 'Agent identifier', 'claude-code')
   .action(async (id: string, options: { agent: string }) => {
-    const issue = await hubFetch('/api/board/claude/claim', {
-      method: 'POST',
-      body: JSON.stringify({ id, agent_id: options.agent }),
-    })
+    const item = await withSpinner('Claiming item...', () =>
+      hubFetch('/api/board/claude/claim', {
+        method: 'POST',
+        body: JSON.stringify({ id, agent_id: options.agent }),
+      }),
+    )
 
-    console.log(chalk.green(`  Claimed: ${issue.title}`))
-    console.log(chalk.dim(`    Moved to In Progress, assigned to ${issue.assigned_to}`))
-    if (issue.description) {
-      console.log(chalk.dim(`\n    ${issue.description}`))
+    console.log(chalk.green(`  Claimed: ${item.title}`))
+    console.log(chalk.dim(`    Moved to build stage, assigned to ${item.assigned_to}`))
+    if (item.description) {
+      console.log(chalk.dim(`\n    ${item.description}`))
     }
   })
 
 claudeCmd
   .command('complete <id>')
   .alias('done')
-  .description('Mark a claimed issue as done')
+  .description('Mark a claimed item as done')
   .action(async (id: string) => {
-    await hubFetch('/api/board/claude/complete', {
-      method: 'POST',
-      body: JSON.stringify({ id }),
-    })
+    await withSpinner('Completing item...', () =>
+      hubFetch('/api/board/claude/complete', {
+        method: 'POST',
+        body: JSON.stringify({ id }),
+      }),
+    )
 
     console.log(chalk.green(`  Completed: ${id} -> Done`))
   })
 
 claudeCmd
   .command('run')
-  .description('Run the Claude runner (picks up and works on Claude lane issues)')
+  .description('Run the Claude runner (picks up and works on Claude stage items)')
   .option('--loop [interval]', 'Keep polling (default 60s)')
   .option('--dry-run', 'Show what would run without executing')
   .action(async (options: { loop?: string | boolean; dryRun?: boolean }) => {
     const { execSync } = await import('node:child_process')
-    const { resolve } = await import('node:path')
+    const { resolve, dirname } = await import('node:path')
 
-    // Find the runner script relative to the CLI package
-    const scriptPath = resolve(process.cwd(), 'scripts', 'claude-runner.sh')
+    // Resolve relative to the CLI package, not process.cwd()
+    const cliDir = dirname(fileURLToPath(import.meta.url))
+    const scriptPath = resolve(cliDir, '..', '..', '..', '..', 'scripts', 'claude-runner.sh')
 
     const args: string[] = []
     if (options.loop !== undefined) {
@@ -196,7 +202,7 @@ claudeCmd
     try {
       execSync(`"${scriptPath}" ${args.join(' ')}`, {
         stdio: 'inherit',
-        cwd: resolve(process.cwd()),
+        cwd: resolve(cliDir, '..', '..', '..', '..'),
       })
     } catch (err: any) {
       if (err.status !== 1) {

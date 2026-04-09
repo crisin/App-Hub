@@ -4,10 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   defaultProjectMeta,
-  defaultTasksMd,
   defaultClaudeMd,
   APPHUB_META_FILE,
-  TASKS_FILE,
   DOCS_DIR,
 } from '@apphub/shared'
 import type { Template } from '@apphub/shared'
@@ -97,9 +95,6 @@ export async function createProject(
     path.join(projectPath, APPHUB_META_FILE),
     defaultProjectMeta(name, slug, templateSlug),
   )
-
-  // Create TASKS.md
-  fs.writeFileSync(path.join(projectPath, TASKS_FILE), defaultTasksMd(name))
 
   // Create CLAUDE.md
   fs.writeFileSync(path.join(projectPath, 'CLAUDE.md'), defaultClaudeMd(name, slug, templateSlug))

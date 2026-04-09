@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { getDb } from '$lib/server/db'
-import type { Item, ItemStage } from '@apphub/shared'
+import { listItemsByStage, getProjectFilters, listPhases } from '$lib/server/data'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -13,60 +13,15 @@ export interface ProjectScope {
   icon?: string
 }
 
-/** Project info for the filter UI */
-export interface ProjectFilter {
-  slug: string
-  name: string
-  color: string
-  icon: string
-  itemCount: number
-}
-
 export const load: PageServerLoad = async () => {
-  const db = getDb()
-  const rows = db.prepare('SELECT * FROM items ORDER BY position ASC').all() as any[]
-
-  const stages: Record<ItemStage, Item[]> = {
-    idea: [],
-    plan: [],
-    build: [],
-    claude: [],
-    review: [],
-    done: [],
-  }
-
-  // Get attachment counts
-  const attCounts = db
-    .prepare('SELECT issue_id, COUNT(*) as count FROM issue_attachments GROUP BY issue_id')
-    .all() as { issue_id: string; count: number }[]
-  const attMap = new Map(attCounts.map((r) => [r.issue_id, r.count]))
-
-  // Get blocked items
-  const blockedItems = db
-    .prepare(
-      `SELECT DISTINCT d.item_id FROM item_dependencies d
-       JOIN items blocker ON d.depends_on_id = blocker.id
-       WHERE d.dependency_type = 'blocks' AND blocker.stage != 'done'`,
-    )
-    .all() as { item_id: string }[]
-  const blockedSet = new Set(blockedItems.map((r) => r.item_id))
-
-  for (const row of rows) {
-    const item: Item = {
-      ...row,
-      labels: JSON.parse(row.labels || '[]'),
-      attachment_count: attMap.get(row.id) ?? 0,
-      is_blocked: blockedSet.has(row.id),
-    }
-    if (stages[item.stage as ItemStage]) {
-      stages[item.stage as ItemStage].push(item)
-    }
-  }
+  // Items grouped by stage — single source of truth via data layer
+  const stages = listItemsByStage()
 
   // Build available project scopes
+  const db = getDb()
   const projectRoot = path.resolve(process.cwd(), '..', '..')
   const scopes: ProjectScope[] = [
-    { slug: 'hub', label: 'App Hub', type: 'hub', path: projectRoot, color: '#6366f1', icon: '⬡' },
+    { slug: 'hub', label: 'App Hub', type: 'hub', path: projectRoot, color: '#6366f1', icon: '\u2B21' },
   ]
 
   // Add projects from DB
@@ -105,27 +60,14 @@ export const load: PageServerLoad = async () => {
     }
   }
 
-  // Build project filters — projects that have items
-  const projectsWithItems = db
-    .prepare(
-      `SELECT i.project_slug as slug, COUNT(*) as count,
-              COALESCE(p.name, i.project_slug) as name,
-              COALESCE(p.color, '') as color,
-              COALESCE(p.icon, '') as icon
-       FROM items i
-       LEFT JOIN projects p ON i.project_slug = p.slug
-       GROUP BY i.project_slug
-       ORDER BY count DESC`,
-    )
-    .all() as any[]
+  // Project filters for the UI
+  const projectFilters = getProjectFilters()
 
-  const projectFilters: ProjectFilter[] = projectsWithItems.map((p: any) => ({
-    slug: p.slug,
-    name: p.name,
-    color: p.color || (p.slug === 'hub' ? '#6366f1' : ''),
-    icon: p.icon || (p.slug === 'hub' ? '⬡' : ''),
-    itemCount: p.count,
-  }))
+  // Phase data keyed by project slug (for phase grouping in board view)
+  const phasesByProject: Record<string, any[]> = {}
+  for (const pf of projectFilters) {
+    phasesByProject[pf.slug] = listPhases(pf.slug)
+  }
 
-  return { lanes: stages, scopes, projectFilters }
+  return { lanes: stages, scopes, projectFilters, phasesByProject }
 }

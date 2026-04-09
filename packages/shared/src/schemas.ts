@@ -1,4 +1,4 @@
-import type { ProjectStatus, TaskPriority, TaskStatus, BoardLane, ItemStage, ItemType, DependencyType } from './types.js'
+import type { ProjectStatus, ItemPriority, ItemStage, DependencyType } from './types.js'
 
 /** Valid project statuses */
 export const PROJECT_STATUSES: ProjectStatus[] = [
@@ -9,17 +9,11 @@ export const PROJECT_STATUSES: ProjectStatus[] = [
   'archived',
 ]
 
-/** Valid task statuses */
-export const TASK_STATUSES: TaskStatus[] = ['todo', 'in_progress', 'done', 'blocked']
-
-/** Valid task priorities */
-export const TASK_PRIORITIES: TaskPriority[] = ['low', 'medium', 'high', 'critical']
+/** Valid item priorities */
+export const ITEM_PRIORITIES: ItemPriority[] = ['low', 'medium', 'high', 'critical']
 
 /** Item stages — the unified flow pipeline (including claude execution stage) */
 export const ITEM_STAGES: ItemStage[] = ['idea', 'plan', 'build', 'claude', 'review', 'done']
-
-/** Display stages — stages shown in the project flow view (excludes claude) */
-export const FLOW_STAGES: ItemStage[] = ['idea', 'plan', 'build', 'review', 'done']
 
 /** Human-readable stage labels */
 export const ITEM_STAGE_LABELS: Record<ItemStage, string> = {
@@ -31,41 +25,11 @@ export const ITEM_STAGE_LABELS: Record<ItemStage, string> = {
   done: 'Done',
 }
 
-/** Item types */
-export const ITEM_TYPES: ItemType[] = ['task', 'idea', 'bug', 'plan', 'note']
-
 /** Dependency types */
 export const DEPENDENCY_TYPES: DependencyType[] = ['blocks', 'relates_to']
 
-/** Map old board lanes to item stages */
-export const LANE_TO_STAGE: Record<BoardLane, ItemStage> = {
-  backlog: 'idea',
-  todo: 'plan',
-  in_progress: 'build',
-  claude: 'claude',
-  review: 'review',
-  done: 'done',
-}
-
-/** @deprecated Use ITEM_STAGES instead */
-export const BOARD_LANES: BoardLane[] = [
-  'backlog',
-  'todo',
-  'in_progress',
-  'claude',
-  'review',
-  'done',
-]
-
-/** @deprecated Use ITEM_STAGE_LABELS instead */
-export const BOARD_LANE_LABELS: Record<BoardLane, string> = {
-  backlog: 'Backlog',
-  todo: 'Todo',
-  in_progress: 'In Progress',
-  claude: 'Claude',
-  review: 'Review',
-  done: 'Done',
-}
+/** Default phases seeded when creating a new project */
+export const DEFAULT_PHASES = ['Planning', 'Build', 'Test', 'Ship']
 
 /** Allowed attachment MIME types */
 export const ATTACHMENT_MIME_TYPES = [
@@ -157,23 +121,3 @@ npx apphub task done <task-id> -p ${slug}
 `
 }
 
-/** Default TASKS.md template */
-export function defaultTasksMd(projectName: string): string {
-  return `---
-project: "${projectName}"
----
-
-# Tasks
-
-## Todo
-
-- [ ] **Set up project** | priority: high | id: task-001
-  Define the initial project structure and dependencies.
-
-## In Progress
-
-## Done
-
-## Blocked
-`
-}

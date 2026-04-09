@@ -1,20 +1,26 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { APPHUB_META_FILE, TASKS_FILE } from '@apphub/shared'
-import type { Project } from '@apphub/shared'
-import { parseProjectMeta, parseTasks } from './parser.js'
+import { APPHUB_META_FILE } from '@apphub/shared'
+import type { ProjectMeta } from '@apphub/shared'
+import { parseProjectMeta } from './parser.js'
 import { getDb } from './db.js'
+import { seedDefaultPhases } from './data.js'
 
 /** Resolve the projects directory from the hub root */
 function getProjectsDir(): string {
   return path.resolve(process.cwd(), '..', '..', 'projects')
 }
 
+/** A project as stored in SQLite + its disk path */
+export interface ProjectRow extends ProjectMeta {
+  path: string
+}
+
 /**
  * Scan the projects/ directory, parse markdown files, and sync to SQLite.
  * Returns all discovered projects.
  */
-export function syncProjects(): Project[] {
+export function syncProjects(): ProjectRow[] {
   const projectsDir = getProjectsDir()
   if (!fs.existsSync(projectsDir)) {
     fs.mkdirSync(projectsDir, { recursive: true })
@@ -23,7 +29,7 @@ export function syncProjects(): Project[] {
 
   const db = getDb()
   const entries = fs.readdirSync(projectsDir, { withFileTypes: true })
-  const projects: Project[] = []
+  const projects: ProjectRow[] = []
 
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
@@ -37,21 +43,9 @@ export function syncProjects(): Project[] {
     const meta = parseProjectMeta(metaContent)
     meta.slug = meta.slug || entry.name
 
-    // Parse tasks
-    const tasksPath = path.join(projectPath, TASKS_FILE)
-    const tasks = fs.existsSync(tasksPath) ? parseTasks(fs.readFileSync(tasksPath, 'utf-8')) : []
-
-    const taskSummary = {
-      total: tasks.length,
-      todo: tasks.filter((t) => t.status === 'todo').length,
-      in_progress: tasks.filter((t) => t.status === 'in_progress').length,
-      done: tasks.filter((t) => t.status === 'done').length,
-      blocked: tasks.filter((t) => t.status === 'blocked').length,
-    }
-
-    const project: Project = {
+    const project: ProjectRow = {
       name: meta.name ?? entry.name,
-      slug: meta.slug,
+      slug: meta.slug!,
       description: meta.description ?? '',
       context: meta.context ?? '',
       status: meta.status ?? 'idea',
@@ -60,8 +54,6 @@ export function syncProjects(): Project[] {
       created: meta.created ?? new Date().toISOString(),
       updated: meta.updated ?? new Date().toISOString(),
       path: projectPath,
-      tasks,
-      taskSummary,
     }
 
     projects.push(project)
@@ -95,15 +87,8 @@ export function syncProjects(): Project[] {
       updated: project.updated,
     })
 
-    // Sync tasks
-    db.prepare('DELETE FROM tasks WHERE project = ?').run(project.slug)
-    const insertTask = db.prepare(`
-      INSERT INTO tasks (id, project, title, status, priority, description, created, updated, synced_at)
-      VALUES (@id, @project, @title, @status, @priority, @description, @created, @updated, datetime('now'))
-    `)
-    for (const task of tasks) {
-      insertTask.run({ ...task, project: project.slug, description: task.description ?? '' })
-    }
+    // Seed default phases if none exist yet
+    seedDefaultPhases(project.slug)
   }
 
   return projects
@@ -112,25 +97,12 @@ export function syncProjects(): Project[] {
 /**
  * Get all projects from SQLite (without re-scanning disk)
  */
-export function getProjectsFromDb(): Project[] {
+export function getProjectsFromDb(): ProjectRow[] {
   const db = getDb()
   const rows = db.prepare('SELECT * FROM projects ORDER BY updated DESC').all() as any[]
 
-  return rows.map((row) => {
-    const tasks = db
-      .prepare('SELECT * FROM tasks WHERE project = ? ORDER BY created')
-      .all(row.slug) as any[]
-    return {
-      ...row,
-      tags: JSON.parse(row.tags || '[]'),
-      tasks,
-      taskSummary: {
-        total: tasks.length,
-        todo: tasks.filter((t: any) => t.status === 'todo').length,
-        in_progress: tasks.filter((t: any) => t.status === 'in_progress').length,
-        done: tasks.filter((t: any) => t.status === 'done').length,
-        blocked: tasks.filter((t: any) => t.status === 'blocked').length,
-      },
-    }
-  })
+  return rows.map((row) => ({
+    ...row,
+    tags: JSON.parse(row.tags || '[]'),
+  }))
 }

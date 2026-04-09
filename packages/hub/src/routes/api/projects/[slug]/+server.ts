@@ -16,9 +16,17 @@ export const GET: RequestHandler = async ({ params }) => {
     return json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
 
-  const tasks = db.prepare('SELECT * FROM tasks WHERE project = ? ORDER BY created').all(params.slug);
   project.tags = JSON.parse(project.tags || '[]');
-  project.tasks = tasks;
+
+  // Item counts from the items table
+  const counts = db
+    .prepare(
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN stage = 'done' THEN 1 ELSE 0 END) as done
+       FROM items WHERE project_slug = ?`,
+    )
+    .get(params.slug) as { total: number; done: number } | undefined;
+  project.itemSummary = counts ?? { total: 0, done: 0 };
 
   return json({ ok: true, data: project });
 };

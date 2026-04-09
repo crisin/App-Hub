@@ -56,18 +56,7 @@ function migrate(db: Database.Database) {
       created     TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS board_issues (
-      id          TEXT PRIMARY KEY,
-      title       TEXT NOT NULL,
-      description TEXT DEFAULT '',
-      lane        TEXT NOT NULL DEFAULT 'backlog',
-      priority    TEXT NOT NULL DEFAULT 'medium',
-      labels      TEXT DEFAULT '[]',
-      position    INTEGER NOT NULL DEFAULT 0,
-      assigned_to TEXT DEFAULT '',
-      created     TEXT NOT NULL DEFAULT (datetime('now')),
-      updated     TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+    -- board_issues table removed (migrated to items table)
 
     CREATE TABLE IF NOT EXISTS claude_notes (
       id          TEXT PRIMARY KEY,
@@ -132,7 +121,6 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_board_issues_lane ON board_issues(lane);
     CREATE INDEX IF NOT EXISTS idx_issue_attachments_issue ON issue_attachments(issue_id);
     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON dev_refresh_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_api_keys_user ON dev_api_keys(user_id);
@@ -164,13 +152,6 @@ function migrate(db: Database.Database) {
   // Add password_hash column to dev_users if it doesn't exist yet
   try {
     db.exec("ALTER TABLE dev_users ADD COLUMN password_hash TEXT DEFAULT ''")
-  } catch {
-    // column already exists — ignore
-  }
-
-  // Add project_scope column to board_issues
-  try {
-    db.exec("ALTER TABLE board_issues ADD COLUMN project_scope TEXT NOT NULL DEFAULT 'hub'")
   } catch {
     // column already exists — ignore
   }
@@ -213,6 +194,30 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_items_assigned ON items(assigned_to);
   `)
 
+  // --- Phases table (project milestones) ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS phases (
+      id            TEXT PRIMARY KEY,
+      project_slug  TEXT NOT NULL,
+      name          TEXT NOT NULL,
+      position      INTEGER NOT NULL DEFAULT 0,
+      status        TEXT NOT NULL DEFAULT 'upcoming',
+      target_date   TEXT DEFAULT NULL,
+      created       TEXT NOT NULL DEFAULT (datetime('now')),
+      updated       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_phases_project ON phases(project_slug);
+  `)
+
+  // Add phase_id column to items if it doesn't exist yet
+  try {
+    db.exec('ALTER TABLE items ADD COLUMN phase_id TEXT DEFAULT NULL')
+  } catch {
+    // column already exists
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_items_phase ON items(phase_id)')
+
   // --- Item dependencies table ---
   db.exec(`
     CREATE TABLE IF NOT EXISTS item_dependencies (
@@ -227,9 +232,6 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_deps_item ON item_dependencies(item_id);
     CREATE INDEX IF NOT EXISTS idx_deps_depends ON item_dependencies(depends_on_id);
   `)
-
-  // Migrate board_issues -> items (one-time)
-  migrateToItems(db)
 
   // Ensure "hub" project exists
   const hubExists = db
@@ -262,58 +264,4 @@ function migrate(db: Database.Database) {
   }
 }
 
-/** One-time migration: board_issues -> items */
-function migrateToItems(db: Database.Database) {
-  // Check if migration already done by looking for data in items
-  const itemCount = db.prepare('SELECT COUNT(*) as c FROM items').get() as { c: number }
-  if (itemCount.c > 0) return // already migrated
-
-  // Check if there's anything to migrate
-  let hasBoardIssues = false
-  try {
-    const biCount = db.prepare('SELECT COUNT(*) as c FROM board_issues').get() as { c: number }
-    hasBoardIssues = biCount.c > 0
-  } catch {
-    return // board_issues table doesn't exist yet
-  }
-
-  if (!hasBoardIssues) return
-
-  // Lane -> Stage mapping
-  const laneToStage: Record<string, string> = {
-    backlog: 'idea',
-    todo: 'plan',
-    in_progress: 'build',
-    claude: 'claude',
-    review: 'review',
-    done: 'done',
-  }
-
-  const issues = db.prepare('SELECT * FROM board_issues').all() as any[]
-
-  const insert = db.prepare(`
-    INSERT INTO items (id, project_slug, title, description, stage, priority, labels, position, assigned_to, parent_id, item_type, created, updated)
-    VALUES (@id, @project_slug, @title, @description, @stage, @priority, @labels, @position, @assigned_to, NULL, 'task', @created, @updated)
-  `)
-
-  const txn = db.transaction(() => {
-    for (const issue of issues) {
-      insert.run({
-        id: issue.id,
-        project_slug: issue.project_scope || 'hub',
-        title: issue.title,
-        description: issue.description || '',
-        stage: laneToStage[issue.lane] || 'idea',
-        priority: issue.priority || 'medium',
-        labels: issue.labels || '[]',
-        position: issue.position || 0,
-        assigned_to: issue.assigned_to || '',
-        created: issue.created,
-        updated: issue.updated,
-      })
-    }
-  })
-
-  txn()
-  console.log(`[db] Migrated ${issues.length} board issues → items table`)
-}
+// board_issues → items migration removed (completed, no longer needed)

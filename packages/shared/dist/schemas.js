@@ -6,14 +6,10 @@ export const PROJECT_STATUSES = [
     'completed',
     'archived',
 ];
-/** Valid task statuses */
-export const TASK_STATUSES = ['todo', 'in_progress', 'done', 'blocked'];
-/** Valid task priorities */
-export const TASK_PRIORITIES = ['low', 'medium', 'high', 'critical'];
+/** Valid item priorities */
+export const ITEM_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 /** Item stages — the unified flow pipeline (including claude execution stage) */
 export const ITEM_STAGES = ['idea', 'plan', 'build', 'claude', 'review', 'done'];
-/** Display stages — stages shown in the project flow view (excludes claude) */
-export const FLOW_STAGES = ['idea', 'plan', 'build', 'review', 'done'];
 /** Human-readable stage labels */
 export const ITEM_STAGE_LABELS = {
     idea: 'Idea',
@@ -23,37 +19,10 @@ export const ITEM_STAGE_LABELS = {
     review: 'Review',
     done: 'Done',
 };
-/** Item types */
-export const ITEM_TYPES = ['task', 'idea', 'bug', 'plan', 'note'];
 /** Dependency types */
 export const DEPENDENCY_TYPES = ['blocks', 'relates_to'];
-/** Map old board lanes to item stages */
-export const LANE_TO_STAGE = {
-    backlog: 'idea',
-    todo: 'plan',
-    in_progress: 'build',
-    claude: 'claude',
-    review: 'review',
-    done: 'done',
-};
-/** @deprecated Use ITEM_STAGES instead */
-export const BOARD_LANES = [
-    'backlog',
-    'todo',
-    'in_progress',
-    'claude',
-    'review',
-    'done',
-];
-/** @deprecated Use ITEM_STAGE_LABELS instead */
-export const BOARD_LANE_LABELS = {
-    backlog: 'Backlog',
-    todo: 'Todo',
-    in_progress: 'In Progress',
-    claude: 'Claude',
-    review: 'Review',
-    done: 'Done',
-};
+/** Default phases seeded when creating a new project */
+export const DEFAULT_PHASES = ['Planning', 'Build', 'Test', 'Ship'];
 /** Allowed attachment MIME types */
 export const ATTACHMENT_MIME_TYPES = [
     'image/png',
@@ -138,25 +107,5 @@ npx apphub task list -p ${slug}
 # Mark a task done
 npx apphub task done <task-id> -p ${slug}
 \`\`\`
-`;
-}
-/** Default TASKS.md template */
-export function defaultTasksMd(projectName) {
-    return `---
-project: "${projectName}"
----
-
-# Tasks
-
-## Todo
-
-- [ ] **Set up project** | priority: high | id: task-001
-  Define the initial project structure and dependencies.
-
-## In Progress
-
-## Done
-
-## Blocked
 `;
 }

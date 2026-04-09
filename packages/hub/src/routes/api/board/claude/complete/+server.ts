@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const db = getDb()
   const now = new Date().toISOString()
 
-  // Get next position in done lane
+  // Get next position in done stage
   const maxPos = db
     .prepare("SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'")
     .get() as { max: number }

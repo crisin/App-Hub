@@ -1,18 +1,14 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
-import { randomUUID } from 'node:crypto'
+import { listNotes, addClaudeNote } from '$lib/server/data'
 import { logger } from '$lib/server/logger'
 
-const VALID_TYPES = ['progress', 'commit', 'error', 'info']
+const VALID_TYPES = ['progress', 'commit', 'error', 'info'] as const
 
 /** GET /api/board/:id/notes — list all notes for an issue */
 export const GET: RequestHandler = async ({ params }) => {
-  const db = getDb()
-  const notes = db
-    .prepare('SELECT * FROM claude_notes WHERE issue_id = ? ORDER BY created ASC')
-    .all(params.id)
-
+  const notes = listNotes(params.id)
   return json({ ok: true, data: notes })
 }
 
@@ -34,24 +30,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
   }
 
   const noteType = type && VALID_TYPES.includes(type) ? type : 'progress'
-  const trimmed = message.trim().slice(0, 200)
+  const trimmed = message.trim()
 
-  const id = `note-${randomUUID().slice(0, 8)}`
-  const now = new Date().toISOString()
-
-  db.prepare(
-    `
-    INSERT INTO claude_notes (id, issue_id, type, message, created)
-    VALUES (@id, @issue_id, @type, @message, @created)
-  `,
-  ).run({ id, issue_id: params.id, type: noteType, message: trimmed, created: now })
+  addClaudeNote(params.id, noteType as any, trimmed)
 
   logger.info('claude', 'note.added', `Note on "${issue.title}": ${trimmed.slice(0, 80)}`, {
     issueId: params.id,
-    noteId: id,
     type: noteType,
   })
 
-  const note = db.prepare('SELECT * FROM claude_notes WHERE id = ?').get(id)
-  return json({ ok: true, data: note }, { status: 201 })
+  // Return the latest notes
+  const notes = listNotes(params.id)
+  const latest = notes[notes.length - 1]
+  return json({ ok: true, data: latest }, { status: 201 })
 }

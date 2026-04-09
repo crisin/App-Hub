@@ -1,15 +1,28 @@
 const HUB_URL = process.env.APPHUB_URL ?? 'http://localhost:5174'
 
 export async function hubFetch<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${HUB_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${HUB_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    })
+  } catch (err) {
+    throw new Error(
+      `Could not connect to hub at ${HUB_URL}. Is it running? (npm run dev)`,
+    )
+  }
 
-  const data = await res.json()
+  const text = await res.text()
+  let data: any
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error(`Hub returned non-JSON response (${res.status}): ${text.slice(0, 200)}`)
+  }
 
   if (!data.ok) {
     throw new Error(data.error ?? `Request failed: ${res.status}`)

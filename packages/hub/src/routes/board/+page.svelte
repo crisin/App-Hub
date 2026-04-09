@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { Item, ItemStage, IssueAttachment, ClaudeNote } from '@apphub/shared'
+  import type { Item, ItemStage, IssueAttachment, ClaudeNote, Phase } from '@apphub/shared'
   import { ITEM_STAGES, ITEM_STAGE_LABELS } from '@apphub/shared'
+  import SuggestPanel from '$lib/components/SuggestPanel.svelte'
 
   let { data } = $props()
 
@@ -55,6 +56,65 @@
     return filtered
   })
 
+  // Phase data from server (keyed by project slug)
+  let phasesByProject = $derived(data.phasesByProject ?? {})
+
+  // When exactly one project is filtered, expose its phases for grouping
+  let activePhases = $derived.by(() => {
+    if (activeProjectFilters.size !== 1) return [] as Phase[]
+    const slug = [...activeProjectFilters][0]
+    return (phasesByProject[slug] ?? []) as Phase[]
+  })
+
+  // Build a phase lookup map for card badges
+  let phaseMap = $derived.by(() => {
+    const map = new Map<string, Phase>()
+    for (const phases of Object.values(phasesByProject) as Phase[][]) {
+      for (const p of phases) {
+        map.set(p.id, p)
+      }
+    }
+    return map
+  })
+
+  // Group items by phase for a given lane (returns [{phase, items}] sorted by phase position)
+  function groupByPhase(items: Item[]): { phase: Phase | null; items: Item[] }[] {
+    if (activePhases.length === 0) return [{ phase: null, items }]
+
+    const groups = new Map<string | null, Item[]>()
+    // Initialize groups in phase order
+    for (const p of activePhases) {
+      groups.set(p.id, [])
+    }
+    groups.set(null, []) // unassigned
+
+    for (const item of items) {
+      const key = item.phase_id && groups.has(item.phase_id) ? item.phase_id : null
+      groups.get(key)!.push(item)
+    }
+
+    const result: { phase: Phase | null; items: Item[] }[] = []
+    for (const p of activePhases) {
+      const phaseItems = groups.get(p.id) ?? []
+      if (phaseItems.length > 0) {
+        result.push({ phase: p, items: phaseItems })
+      }
+    }
+    const unassigned = groups.get(null) ?? []
+    if (unassigned.length > 0) {
+      result.push({ phase: null, items: unassigned })
+    }
+    return result
+  }
+
+  // Phases available for the currently edited item's project
+  let editPhases = $derived.by(() => {
+    return (phasesByProject[editScope] ?? []) as Phase[]
+  })
+
+  // AI Suggest panel
+  let showSuggest = $state(false)
+
   // New issue form
   let showNewIssue = $state(false)
   let newTitle = $state('')
@@ -71,6 +131,7 @@
   let editPriority = $state('medium')
   let editLabels = $state('')
   let editScope = $state('hub')
+  let editPhaseId = $state<string | null>(null)
 
   // Attachments in edit modal
   let editAttachments = $state<IssueAttachment[]>([])
@@ -372,6 +433,29 @@
     }
   }
 
+  async function acceptSuggestion(suggestion: any) {
+    const res = await fetch('/api/board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: suggestion.title,
+        description: suggestion.description,
+        priority: suggestion.priority,
+        stage: suggestion.stage,
+        labels: suggestion.labels,
+        project_slug: newScope || 'hub',
+      }),
+    })
+
+    if (res.ok) {
+      const { data: item } = await res.json()
+      mutateLanes((l) => {
+        l[item.stage as ItemStage] = [...l[item.stage as ItemStage], item]
+        return l
+      })
+    }
+  }
+
   function openEdit(issue: Item) {
     editingIssue = issue
     editTitle = issue.title
@@ -379,6 +463,7 @@
     editPriority = issue.priority
     editLabels = issue.labels.join(', ')
     editScope = issue.project_slug || 'hub'
+    editPhaseId = issue.phase_id || null
     editAttachments = []
     editNotes = []
     // Load attachments and notes in parallel
@@ -411,6 +496,7 @@
           .map((l) => l.trim())
           .filter(Boolean),
         project_slug: editScope,
+        phase_id: editPhaseId,
       }),
     })
 
@@ -654,7 +740,10 @@
           </button>
         {/if}
       </div>
-      <button class="btn-primary" onclick={() => (showNewIssue = !showNewIssue)}>
+      <button class="btn-suggest" onclick={() => { showSuggest = !showSuggest; if (showSuggest) showNewIssue = false }} title="AI task suggestions">
+        &#x2728; Suggest
+      </button>
+      <button class="btn-primary" onclick={() => { showNewIssue = !showNewIssue; if (showNewIssue) showSuggest = false }}>
         + New Issue
       </button>
     </div>
@@ -726,6 +815,14 @@
     </div>
   {/if}
 
+  {#if showSuggest}
+    <SuggestPanel
+      scopes={data.scopes}
+      onaccept={acceptSuggestion}
+      onclose={() => (showSuggest = false)}
+    />
+  {/if}
+
   <div class="kanban">
     {#each laneOrder as lane}
       <div
@@ -747,51 +844,71 @@
         </div>
 
         <div class="lane-cards">
-          {#each filteredLanes[lane] as issue (issue.id)}
-            <button
-              type="button"
-              class="issue-card"
-              class:dragging={draggedIssue?.id === issue.id}
-              class:locked={isLocked(issue)}
-              draggable={!isLocked(issue)}
-              ondragstart={(e) => onDragStart(e, issue, lane)}
-              ondragend={onDragEnd}
-              onclick={() => openEdit(issue)}
-            >
-              <div class="issue-top">
-                <span class="issue-title">{issue.title}</span>
-                <span class="priority-dot {priorityClass(issue.priority)}" title={issue.priority}
-                ></span>
+          {#each groupByPhase(filteredLanes[lane]) as group}
+            {#if group.phase}
+              <div class="phase-group-header">
+                <span class="phase-group-name">{group.phase.name}</span>
+                <span class="phase-group-count">{group.items.length}</span>
               </div>
-              {#if issue.description}
-                <p class="issue-desc">
-                  {issue.description.slice(0, 80)}{issue.description.length > 80 ? '...' : ''}
-                </p>
-              {/if}
-              {#if issue.project_slug && issue.project_slug !== 'hub'}
-                <div class="scope-badge-row">
-                  <span class="scope-badge">{issue.project_slug}</span>
+            {:else if activePhases.length > 0}
+              <div class="phase-group-header phase-unassigned">
+                <span class="phase-group-name">No phase</span>
+                <span class="phase-group-count">{group.items.length}</span>
+              </div>
+            {/if}
+            {#each group.items as issue (issue.id)}
+              <button
+                type="button"
+                class="issue-card"
+                class:dragging={draggedIssue?.id === issue.id}
+                class:locked={isLocked(issue)}
+                draggable={!isLocked(issue)}
+                ondragstart={(e) => onDragStart(e, issue, lane)}
+                ondragend={onDragEnd}
+                onclick={() => openEdit(issue)}
+              >
+                <div class="issue-top">
+                  <span class="issue-title">{issue.title}</span>
+                  <span class="priority-dot {priorityClass(issue.priority)}" title={issue.priority}
+                  ></span>
                 </div>
-              {/if}
-              {#if issue.labels.length > 0}
-                <div class="issue-labels">
-                  {#each issue.labels as label}
-                    <span class="label">{label}</span>
-                  {/each}
-                </div>
-              {/if}
-              {#if (issue as any).attachment_count > 0}
-                <div class="attachment-indicator">
-                  <span class="attachment-icon">&#x1F4CE;</span>
-                  <span class="attachment-count">{(issue as any).attachment_count}</span>
-                </div>
-              {/if}
-              {#if issue.assigned_to}
-                <div class="assigned">
-                  <span class="assigned-badge">&#x2726; {issue.assigned_to}</span>
-                </div>
-              {/if}
-            </button>
+                {#if issue.description}
+                  <p class="issue-desc">
+                    {issue.description.slice(0, 80)}{issue.description.length > 80 ? '...' : ''}
+                  </p>
+                {/if}
+                {#if issue.project_slug && issue.project_slug !== 'hub'}
+                  <div class="scope-badge-row">
+                    <span class="scope-badge">{issue.project_slug}</span>
+                    {#if issue.phase_id && phaseMap.has(issue.phase_id)}
+                      <span class="phase-badge">{phaseMap.get(issue.phase_id)?.name}</span>
+                    {/if}
+                  </div>
+                {:else if issue.phase_id && phaseMap.has(issue.phase_id)}
+                  <div class="scope-badge-row">
+                    <span class="phase-badge">{phaseMap.get(issue.phase_id)?.name}</span>
+                  </div>
+                {/if}
+                {#if issue.labels.length > 0}
+                  <div class="issue-labels">
+                    {#each issue.labels as label}
+                      <span class="label">{label}</span>
+                    {/each}
+                  </div>
+                {/if}
+                {#if (issue as any).attachment_count > 0}
+                  <div class="attachment-indicator">
+                    <span class="attachment-icon">&#x1F4CE;</span>
+                    <span class="attachment-count">{(issue as any).attachment_count}</span>
+                  </div>
+                {/if}
+                {#if issue.assigned_to}
+                  <div class="assigned">
+                    <span class="assigned-badge">&#x2726; {issue.assigned_to}</span>
+                  </div>
+                {/if}
+              </button>
+            {/each}
           {/each}
         </div>
       </div>
@@ -990,6 +1107,18 @@
           </select>
         </div>
       </div>
+
+      {#if editPhases.length > 0}
+        <div class="drawer-field">
+          <label class="drawer-label">Phase</label>
+          <select bind:value={editPhaseId} disabled={isEditingLocked}>
+            <option value={null}>No phase</option>
+            {#each editPhases as p}
+              <option value={p.id}>{p.name}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
 
       <div class="drawer-field">
         <label class="drawer-label">Labels</label>
@@ -1267,6 +1396,21 @@
     align-items: center;
     gap: 0.5rem;
   }
+  .btn-suggest {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-suggest:hover {
+    background: var(--accent-subtle);
+  }
+
   .btn-claude {
     font-size: 0.75rem;
     font-weight: 600;
@@ -1542,6 +1686,40 @@
     padding: 0.08rem 0.35rem;
     border-radius: 3px;
     letter-spacing: 0.02em;
+  }
+  .phase-badge {
+    font-size: 0.58rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-subtle);
+    padding: 0.08rem 0.35rem;
+    border-radius: 3px;
+    letter-spacing: 0.02em;
+  }
+  .phase-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.25rem 0.5rem;
+    margin: 0.3rem 0 0.15rem;
+    border-left: 2px solid var(--accent);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+  }
+  .phase-group-header.phase-unassigned {
+    border-left-color: var(--border);
+    opacity: 0.7;
+  }
+  .phase-group-name {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .phase-group-count {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    background: var(--bg-hover);
+    padding: 0 0.35rem;
+    border-radius: 8px;
   }
   .scope-select {
     min-width: 120px;

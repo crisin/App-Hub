@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import { logger } from '$lib/server/logger'
 
-/** POST /api/board/claude/claim — claim an issue from the Claude lane */
+/** POST /api/board/claude/claim — claim an item from the Claude stage */
 export const POST: RequestHandler = async ({ request }) => {
   const { id, agent_id } = await request.json()
 
@@ -15,12 +15,12 @@ export const POST: RequestHandler = async ({ request }) => {
   const now = new Date().toISOString()
   const assignee = agent_id ?? 'claude-code'
 
-  // Atomic claim: only succeeds if the issue is still unclaimed and in the claude lane
+  // Atomic claim: only succeeds if the item is still unclaimed and in the claude stage
   const result = db
     .prepare(
       `
     UPDATE items
-    SET assigned_to = @assignee, stage = 'in_progress', updated = @now
+    SET assigned_to = @assignee, stage = 'build', updated = @now
     WHERE id = @id AND stage = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
   `,
     )
@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   if (result.changes === 0) {
     return json(
-      { ok: false, error: 'Issue not found, already claimed, or not in Claude lane' },
+      { ok: false, error: 'Item not found, already claimed, or not in Claude stage' },
       { status: 409 },
     )
   }

@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 
-/** GET /api/board/claude — list unclaimed issues in the Claude lane */
+/** GET /api/board/claude — list unclaimed items in the Claude stage */
 export const GET: RequestHandler = async () => {
   const db = getDb()
   const rows = db
