@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getDb } from './db.js'
-import type { DbItemRow, DbProjectRow } from './db.js'
+import type { DbProjectRow } from './db.js'
 import { logger } from './logger.js'
 import { addClaudeNote, getUnclaimedClaudeItems, hasUnclaimedClaudeItems } from './data.js'
 import {
