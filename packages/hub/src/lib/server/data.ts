@@ -60,6 +60,29 @@ export interface ProjectFilter {
   itemCount: number
 }
 
+// ── Filter builders ─────────────────────────────────────────────────
+
+/**
+ * Build an ItemFilters object from URL search params.
+ * Accepts an optional defaults object to merge (e.g. project slug from route params).
+ */
+export function buildItemFilters(url: URL, defaults?: Partial<ItemFilters>): ItemFilters {
+  const stage = url.searchParams.get('stage') as ItemStage | null
+  const type = url.searchParams.get('type') || undefined
+  const assigned_to = url.searchParams.get('assigned_to') || undefined
+  const search = url.searchParams.get('q') || undefined
+  const project = url.searchParams.get('project') || undefined
+
+  return {
+    ...defaults,
+    ...(stage && ITEM_STAGES.includes(stage) ? { stage } : {}),
+    ...(type ? { item_type: type } : {}),
+    ...(assigned_to ? { assigned_to } : {}),
+    ...(search ? { search } : {}),
+    ...(project ? { project } : {}),
+  }
+}
+
 // ── Shared query fragments ──────────────────────────────────────────
 
 /** Get attachment counts as a Map<itemId, count> */
@@ -312,12 +335,8 @@ export function createItem(data: {
 }): Item {
   const db = getDb()
   const targetStage = data.stage && ITEM_STAGES.includes(data.stage as ItemStage) ? data.stage : 'idea'
-
-  const maxPos = db
-    .prepare(
-      'SELECT COALESCE(MAX(position), -1) as max FROM items WHERE project_slug = ? AND stage = ?',
-    )
-    .get(data.project_slug || 'hub', targetStage) as { max: number }
+  const projectSlug = data.project_slug || 'hub'
+  const position = getNextPosition('items', 'stage', targetStage, 'project_slug', projectSlug)
 
   const id = `item-${randomUUID().slice(0, 8)}`
   const now = new Date().toISOString()
@@ -327,13 +346,13 @@ export function createItem(data: {
      VALUES (@id, @project_slug, @title, @description, @stage, @priority, @labels, @position, '', @parent_id, @phase_id, @item_type, @created, @updated)`,
   ).run({
     id,
-    project_slug: data.project_slug || 'hub',
+    project_slug: projectSlug,
     title: data.title.trim(),
     description: data.description?.trim() ?? '',
     stage: targetStage,
     priority: data.priority ?? 'medium',
     labels: JSON.stringify(data.labels ?? []),
-    position: maxPos.max + 1,
+    position,
     parent_id: data.parent_id || null,
     phase_id: data.phase_id || null,
     item_type: data.item_type ?? 'task',
@@ -441,15 +460,26 @@ export function reorderItems(moves: { id: string; stage: string; position: numbe
 }
 
 /**
- * Get next position for a stage (used when moving items to a new stage).
+ * Get next position value in a table, scoped by one or two filter columns.
+ *
+ * Examples:
+ *   getNextPosition('items', 'stage', 'idea', 'project_slug', 'my-app')
+ *   getNextPosition('phases', 'project_slug', 'my-app')
+ *   getNextPosition('items', 'stage', 'build')   // no project scope
  */
-export function getNextPosition(stage: string, projectSlug?: string): number {
+export function getNextPosition(
+  table: string,
+  filterCol: string,
+  filterVal: string,
+  secondCol?: string,
+  secondVal?: string,
+): number {
   const db = getDb()
-  let query = 'SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = ?'
-  const params: unknown[] = [stage]
-  if (projectSlug) {
-    query += ' AND project_slug = ?'
-    params.push(projectSlug)
+  let query = `SELECT COALESCE(MAX(position), -1) as max FROM ${table} WHERE ${filterCol} = ?`
+  const params: unknown[] = [filterVal]
+  if (secondCol && secondVal !== undefined) {
+    query += ` AND ${secondCol} = ?`
+    params.push(secondVal)
   }
   const result = db.prepare(query).get(...params) as { max: number }
   return result.max + 1
@@ -627,10 +657,7 @@ export function createPhase(data: {
 }): Phase {
   const db = getDb()
 
-  const maxPos = db
-    .prepare('SELECT COALESCE(MAX(position), -1) as max FROM phases WHERE project_slug = ?')
-    .get(data.project_slug) as { max: number }
-
+  const position = getNextPosition('phases', 'project_slug', data.project_slug)
   const id = `phase-${randomUUID().slice(0, 8)}`
   const now = new Date().toISOString()
 
@@ -641,7 +668,7 @@ export function createPhase(data: {
     id,
     project_slug: data.project_slug,
     name: data.name.trim(),
-    position: maxPos.max + 1,
+    position,
     status: data.status ?? 'upcoming',
     target_date: data.target_date ?? null,
     created: now,

@@ -1,9 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
-import { ITEM_STAGES } from '@apphub/shared'
-import type { ItemStage } from '@apphub/shared'
-import { listItemsByStage, createItem } from '$lib/server/data'
+import { listItemsByStage, createItem, buildItemFilters } from '$lib/server/data'
 import { emitBoardChanged } from '$lib/server/claude-runner'
 import { logger } from '$lib/server/logger'
 
@@ -17,18 +15,8 @@ export const GET: RequestHandler = async ({ params, url }) => {
     return json({ ok: false, error: 'Project not found' }, { status: 404 })
   }
 
-  const stage = url.searchParams.get('stage') as ItemStage | null
-  const type = url.searchParams.get('type') || undefined
-  const assigned = url.searchParams.get('assigned_to') || undefined
-  const search = url.searchParams.get('q') || undefined
-
-  const stages = listItemsByStage({
-    project: params.slug,
-    ...(stage && ITEM_STAGES.includes(stage) ? { stage } : {}),
-    ...(type ? { item_type: type } : {}),
-    ...(assigned ? { assigned_to: assigned } : {}),
-    ...(search ? { search } : {}),
-  })
+  const filters = buildItemFilters(url, { project: params.slug })
+  const stages = listItemsByStage(filters)
 
   return json({ ok: true, data: stages })
 }

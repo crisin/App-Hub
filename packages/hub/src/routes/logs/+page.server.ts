@@ -1,20 +1,8 @@
 import type { PageServerLoad } from './$types'
-import { queryLogs, type LogLevel, type LogCategory } from '$lib/server/logger'
+import { queryLogsFromParams } from '$lib/server/log-queries'
 
 export const load: PageServerLoad = async ({ url }) => {
-  const level = url.searchParams.get('level') as LogLevel | null
-  const category = url.searchParams.get('category') as LogCategory | null
-  const search = url.searchParams.get('search')
-  const limit = parseInt(url.searchParams.get('limit') ?? '100', 10)
-  const offset = parseInt(url.searchParams.get('offset') ?? '0', 10)
-
-  const { logs, total } = queryLogs({
-    level: level ?? undefined,
-    category: category ?? undefined,
-    search: search ?? undefined,
-    limit: Math.min(limit, 500),
-    offset,
-  })
+  const { logs, total, limit, offset } = queryLogsFromParams(url.searchParams)
 
   return {
     logs,
@@ -22,9 +10,9 @@ export const load: PageServerLoad = async ({ url }) => {
     limit,
     offset,
     filters: {
-      level: level ?? '',
-      category: category ?? '',
-      search: search ?? '',
+      level: url.searchParams.get('level') ?? '',
+      category: url.searchParams.get('category') ?? '',
+      search: url.searchParams.get('search') ?? '',
     },
   }
 }
