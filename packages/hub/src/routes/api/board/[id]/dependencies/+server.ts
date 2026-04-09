@@ -50,8 +50,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
     return json({ ok: false, error: 'An item cannot depend on itself' }, { status: 400 })
   }
 
-  const type: DependencyType =
-    dependency_type && DEPENDENCY_TYPES.includes(dependency_type) ? dependency_type : 'blocks'
+  if (dependency_type && !DEPENDENCY_TYPES.includes(dependency_type)) {
+    return json(
+      { ok: false, error: `Invalid dependency_type: "${dependency_type}". Must be one of: ${DEPENDENCY_TYPES.join(', ')}` },
+      { status: 400 },
+    )
+  }
+  const type: DependencyType = dependency_type || 'blocks'
 
   const db = getDb()
 
@@ -138,5 +143,5 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
   })
 
   emitBoardChanged()
-  return json({ ok: true })
+  return json({ ok: true, data: null })
 }
