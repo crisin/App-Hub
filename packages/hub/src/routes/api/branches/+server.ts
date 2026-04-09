@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbBranchReviewRow } from '$lib/server/db'
 
 /** GET /api/branches — list branch reviews */
 export const GET: RequestHandler = async ({ url }) => {
@@ -15,7 +16,7 @@ export const GET: RequestHandler = async ({ url }) => {
        WHERE br.status = @status
        ORDER BY br.created DESC`,
     )
-    .all({ status }) as any[]
+    .all({ status }) as (DbBranchReviewRow & { issue_title: string; issue_priority: string; issue_labels: string })[]
 
   const branches = rows.map((r) => ({
     ...r,

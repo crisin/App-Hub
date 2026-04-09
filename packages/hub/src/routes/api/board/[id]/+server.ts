@@ -5,8 +5,7 @@ import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner
 import { logger } from '$lib/server/logger'
 import fs from 'node:fs'
 import path from 'node:path'
-
-const ATTACHMENTS_DIR = path.join(process.cwd(), 'data', 'attachments')
+import { ATTACHMENTS_DIR } from '$lib/server/constants'
 
 /** GET /api/board/:id — get a single item with full context */
 export const GET: RequestHandler = async ({ params }) => {

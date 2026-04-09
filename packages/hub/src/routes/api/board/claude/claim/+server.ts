@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbItemRow } from '$lib/server/db'
 import { logger } from '$lib/server/logger'
 
 /** POST /api/board/claude/claim — claim an item from the Claude stage */
@@ -33,7 +34,7 @@ export const POST: RequestHandler = async ({ request }) => {
     )
   }
 
-  const issue = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
+  const issue = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow
   issue.labels = JSON.parse(issue.labels || '[]')
 
   logger.info('claude', 'issue.claimed', `Issue "${issue.title}" claimed by ${assignee}`, {

@@ -1,4 +1,6 @@
-const HUB_URL = process.env.APPHUB_URL ?? 'http://localhost:5174'
+import { HUB_PORT } from '@apphub/shared'
+
+const HUB_URL = process.env.APPHUB_URL ?? `http://localhost:${HUB_PORT}`
 
 export async function hubFetch<T = any>(path: string, options?: RequestInit): Promise<T> {
   let res: Response

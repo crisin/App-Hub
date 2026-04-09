@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbItemRow } from '$lib/server/db'
 import { randomUUID } from 'node:crypto'
 import { DEPENDENCY_TYPES } from '@apphub/shared'
 import type { DependencyType } from '@apphub/shared'
@@ -56,7 +57,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
   // Verify both items exist
   const item = db.prepare('SELECT id FROM items WHERE id = ?').get(params.id)
-  const target = db.prepare('SELECT id, title FROM items WHERE id = ?').get(depends_on_id) as any
+  const target = db.prepare('SELECT id, title FROM items WHERE id = ?').get(depends_on_id) as Pick<DbItemRow, 'id' | 'title'> | undefined
 
   if (!item) return json({ ok: false, error: 'Item not found' }, { status: 404 })
   if (!target) return json({ ok: false, error: 'Target item not found' }, { status: 404 })

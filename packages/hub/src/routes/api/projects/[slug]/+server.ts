@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
+import type { DbProjectRow } from '$lib/server/db';
 import fs from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
@@ -10,13 +11,11 @@ import { logger } from '$lib/server/logger';
 /** GET /api/projects/:slug — get a single project */
 export const GET: RequestHandler = async ({ params }) => {
   const db = getDb();
-  const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as any;
+  const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as DbProjectRow | undefined;
 
   if (!project) {
     return json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
-
-  project.tags = JSON.parse(project.tags || '[]');
 
   // Item counts from the items table
   const counts = db
@@ -26,15 +25,21 @@ export const GET: RequestHandler = async ({ params }) => {
        FROM items WHERE project_slug = ?`,
     )
     .get(params.slug) as { total: number; done: number } | undefined;
-  project.itemSummary = counts ?? { total: 0, done: 0 };
 
-  return json({ ok: true, data: project });
+  return json({
+    ok: true,
+    data: {
+      ...project,
+      tags: JSON.parse(project.tags || '[]'),
+      itemSummary: counts ?? { total: 0, done: 0 },
+    },
+  });
 };
 
 /** DELETE /api/projects/:slug — delete a project */
 export const DELETE: RequestHandler = async ({ params }) => {
   const db = getDb();
-  const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as any;
+  const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as DbProjectRow | undefined;
 
   if (!project) {
     return json({ ok: false, error: 'Project not found' }, { status: 404 });
@@ -58,7 +63,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 /** PATCH /api/projects/:slug — update project metadata */
 export const PATCH: RequestHandler = async ({ params, request }) => {
   const db = getDb();
-  const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as any;
+  const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as DbProjectRow | undefined;
 
   if (!project) {
     return json({ ok: false, error: 'Project not found' }, { status: 404 });

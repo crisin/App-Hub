@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbItemRow } from '$lib/server/db'
 import { listNotes, addClaudeNote } from '$lib/server/data'
+import type { ClaudeNoteType } from '@apphub/shared'
 import { logger } from '$lib/server/logger'
 
 const VALID_TYPES = ['progress', 'commit', 'error', 'info'] as const
@@ -17,7 +19,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   const db = getDb()
 
   // Verify issue exists
-  const issue = db.prepare('SELECT id, title FROM items WHERE id = ?').get(params.id) as any
+  const issue = db.prepare('SELECT id, title FROM items WHERE id = ?').get(params.id) as Pick<DbItemRow, 'id' | 'title'> | undefined
   if (!issue) {
     return json({ ok: false, error: 'Issue not found' }, { status: 404 })
   }
@@ -32,7 +34,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   const noteType = type && VALID_TYPES.includes(type) ? type : 'progress'
   const trimmed = message.trim()
 
-  addClaudeNote(params.id, noteType as any, trimmed)
+  addClaudeNote(params.id, noteType as ClaudeNoteType, trimmed)
 
   logger.info('claude', 'note.added', `Note on "${issue.title}": ${trimmed.slice(0, 80)}`, {
     issueId: params.id,

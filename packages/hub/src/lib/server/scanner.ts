@@ -4,6 +4,7 @@ import { APPHUB_META_FILE } from '@apphub/shared'
 import type { ProjectMeta } from '@apphub/shared'
 import { parseProjectMeta } from './parser.js'
 import { getDb } from './db.js'
+import type { DbProjectRow } from './db.js'
 import { seedDefaultPhases } from './data.js'
 
 /** Resolve the projects directory from the hub root */
@@ -99,7 +100,7 @@ export function syncProjects(): ProjectRow[] {
  */
 export function getProjectsFromDb(): ProjectRow[] {
   const db = getDb()
-  const rows = db.prepare('SELECT * FROM projects ORDER BY updated DESC').all() as any[]
+  const rows = db.prepare('SELECT * FROM projects ORDER BY updated DESC').all() as DbProjectRow[]
 
   return rows.map((row) => ({
     ...row,

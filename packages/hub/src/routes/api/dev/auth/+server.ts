@@ -4,6 +4,7 @@ import { getDb } from '$lib/server/db'
 import crypto from 'node:crypto'
 import { signJWT, verifyJWT, verifyPassword, hashApiKey, corsHeaders } from '$lib/server/auth'
 import { logger } from '$lib/server/logger'
+import { ACCESS_TTL, REFRESH_TTL } from '$lib/server/constants'
 
 /**
  * Central Auth API — spawned projects authenticate here.
@@ -13,9 +14,6 @@ import { logger } from '$lib/server/logger'
  * DELETE /api/dev/auth            — logout (revoke refresh token)
  * OPTIONS /api/dev/auth           — CORS preflight
  */
-
-const ACCESS_TTL = 60 * 60 // 1 hour (seconds)
-const REFRESH_TTL = 7 * 24 * 60 * 60 // 7 days (seconds)
 
 // ─── OPTIONS (CORS preflight) ─────────────────────────────────────────────────
 

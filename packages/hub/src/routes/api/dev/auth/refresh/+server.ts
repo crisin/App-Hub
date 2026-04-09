@@ -3,15 +3,13 @@ import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import crypto from 'node:crypto'
 import { signJWT, corsHeaders } from '$lib/server/auth'
+import { ACCESS_TTL, REFRESH_TTL } from '$lib/server/constants'
 
 /**
  * POST /api/dev/auth/refresh — exchange a refresh token for a new access + refresh token.
  *
  * Body: { refreshToken: string }
  */
-
-const ACCESS_TTL = 60 * 60
-const REFRESH_TTL = 7 * 24 * 60 * 60
 
 export const OPTIONS: RequestHandler = async ({ request }) =>
   new Response(null, { status: 204, headers: corsHeaders(request.headers.get('origin')) })

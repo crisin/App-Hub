@@ -9,6 +9,7 @@ import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getDb } from './db.js'
+import type { DbItemRow, DbProjectRow } from './db.js'
 import { logger } from './logger.js'
 import { addClaudeNote, getUnclaimedClaudeItems, hasUnclaimedClaudeItems } from './data.js'
 import {
@@ -56,7 +57,9 @@ export interface RunHistoryEntry {
 let runHistory: RunHistoryEntry[] = []
 let lastActivityAt: string | null = null
 
-const HUB_URL = `http://localhost:${process.env.PORT ?? 5174}`
+import { HUB_PORT } from '@apphub/shared'
+
+const HUB_URL = `http://localhost:${process.env.PORT ?? HUB_PORT}`
 const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
 
 /**
@@ -119,7 +122,7 @@ function resolveScope(scope: string): { cwd: string; contextName: string } | nul
 
   // Check projects DB for custom paths
   const db = getDb()
-  const project = db.prepare('SELECT path, name FROM projects WHERE slug = ?').get(scope) as any
+  const project = db.prepare('SELECT path, name FROM projects WHERE slug = ?').get(scope) as Pick<DbProjectRow, 'path' | 'name'> | undefined
   if (project?.path && fs.existsSync(project.path)) {
     return { cwd: project.path, contextName: `project "${project.name}"` }
   }
@@ -386,7 +389,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
   // Find the top unclaimed issue — skipping blocked items (via data layer)
   const db = getDb()
   const unclaimedItems = getUnclaimedClaudeItems()
-  const issue = unclaimedItems[0] as any
+  const issue = unclaimedItems[0]
 
   if (!issue) {
     setStatus({ state: 'idle' })

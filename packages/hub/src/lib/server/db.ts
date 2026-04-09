@@ -1,6 +1,93 @@
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
+import type { ProjectStatus, ItemStage, ItemPriority, ItemType, PhaseStatus, ClaudeNoteType, DependencyType } from '@apphub/shared'
+
+// ── DB row types (match SQLite column shapes) ──────────────────────────────
+
+export interface DbProjectRow {
+  slug: string
+  name: string
+  description: string
+  context: string
+  status: ProjectStatus
+  template: string
+  tags: string // JSON-encoded string[]
+  path: string
+  created: string
+  updated: string
+  synced_at: string
+  color: string
+  icon: string
+  archived_at: string | null
+}
+
+export interface DbItemRow {
+  id: string
+  project_slug: string
+  title: string
+  description: string
+  stage: ItemStage
+  priority: ItemPriority
+  labels: string // JSON-encoded string[]
+  position: number
+  assigned_to: string
+  parent_id: string | null
+  phase_id: string | null
+  item_type: ItemType
+  created: string
+  updated: string
+}
+
+export interface DbPhaseRow {
+  id: string
+  project_slug: string
+  name: string
+  position: number
+  status: PhaseStatus
+  target_date: string | null
+  created: string
+  updated: string
+}
+
+export interface DbNoteRow {
+  id: string
+  issue_id: string
+  type: ClaudeNoteType
+  message: string
+  created: string
+}
+
+export interface DbAttachmentRow {
+  id: string
+  issue_id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  created: string
+}
+
+export interface DbBranchReviewRow {
+  id: string
+  issue_id: string
+  branch_name: string
+  project_scope: string
+  worktree_path: string
+  base_branch: string
+  status: 'pending' | 'merged' | 'discarded'
+  commit_count: number
+  created: string
+  merged_at: string | null
+  discarded_at: string | null
+}
+
+export interface DbDependencyRow {
+  id: string
+  item_id: string
+  depends_on_id: string
+  dependency_type: DependencyType
+  created: string
+}
 
 // process.cwd() is the hub package root in dev, reliable across Vite SSR and built modes
 const DATA_DIR = path.join(process.cwd(), 'data')

@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbProjectRow } from '$lib/server/db'
 import { listItemsByStage, getProjectFilters, listPhases } from '$lib/server/data'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -27,7 +28,7 @@ export const load: PageServerLoad = async () => {
   // Add projects from DB
   const projects = db
     .prepare("SELECT slug, name, path, color, icon FROM projects WHERE slug != 'hub' ORDER BY name")
-    .all() as any[]
+    .all() as Pick<DbProjectRow, 'slug' | 'name' | 'path' | 'color' | 'icon'>[]
   for (const p of projects) {
     scopes.push({
       slug: p.slug,

@@ -10,6 +10,7 @@
  * so it doesn't need to scan or read any files itself.
  */
 import { getDb } from './db.js'
+import type { DbProjectRow } from './db.js'
 import { listItems } from './data.js'
 import { buildArchitectureGraph } from './architecture.js'
 
@@ -41,7 +42,7 @@ export function buildProjectSummary(projectSlug: string): ProjectSummary {
   // ── Project metadata ──────────────────────────────────────────
   const project = db
     .prepare('SELECT slug, name, description, status, context FROM projects WHERE slug = ?')
-    .get(projectSlug) as any
+    .get(projectSlug) as Pick<DbProjectRow, 'slug' | 'name' | 'description' | 'status' | 'context'> | undefined
 
   const name = project?.name ?? projectSlug
   const description = project?.description ?? ''
@@ -141,7 +142,7 @@ export function buildProjectSummary(projectSlug: string): ProjectSummary {
   const existingItems = items.length
     ? items
         .map(
-          (i: any) =>
+          (i) =>
             `[${i.stage}] ${i.priority} — ${i.title}${i.labels?.length ? ` {${i.labels.join(', ')}}` : ''}`,
         )
         .join('\n')

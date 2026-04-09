@@ -5,6 +5,7 @@
  * Routes and page loaders call these functions instead of getDb() directly.
  */
 import { getDb } from './db.js'
+import type { DbItemRow, DbPhaseRow, DbNoteRow, DbAttachmentRow, DbDependencyRow } from './db.js'
 import { randomUUID } from 'node:crypto'
 import type { Item, ItemStage, Phase } from '@apphub/shared'
 import { ITEM_STAGES, DEFAULT_PHASES } from '@apphub/shared'
@@ -30,12 +31,25 @@ export interface ItemWithMeta extends Item {
   project_icon?: string
 }
 
+/** blocked_by join row: dependency columns + title/stage/project of the blocking item */
+export interface DbBlockedByRow extends DbDependencyRow {
+  depends_on_title: string
+  depends_on_stage: ItemStage
+  depends_on_project: string
+}
+
+/** blocks join row: dependency columns + title/stage of the dependent item */
+export interface DbBlocksRow extends DbDependencyRow {
+  item_title: string
+  item_stage: ItemStage
+}
+
 export interface ItemDetail extends ItemWithMeta {
-  attachments: any[]
-  notes: any[]
-  blocked_by: any[]
-  blocks: any[]
-  children: any[]
+  attachments: DbAttachmentRow[]
+  notes: DbNoteRow[]
+  blocked_by: DbBlockedByRow[]
+  blocks: DbBlocksRow[]
+  children: Item[]
 }
 
 export interface ProjectFilter {
@@ -116,7 +130,7 @@ export function getBlockedItemIds(): Set<string> {
 }
 
 /** Parse a raw DB row into an Item with labels parsed */
-function parseItemRow(row: any): Item {
+function parseItemRow(row: DbItemRow): Item {
   return {
     ...row,
     labels: JSON.parse(row.labels || '[]'),
@@ -168,14 +182,20 @@ export function listItemsByStage(
     ? ', p.name as project_name, p.color as project_color, p.icon as project_icon'
     : ''
 
+  type ItemRowWithMaybeProject = DbItemRow & {
+    project_name?: string
+    project_color?: string
+    project_icon?: string
+  }
+
   const rows = db
     .prepare(
       `SELECT i.*${projectFields} FROM items i ${projectJoin} ${where}
        ORDER BY i.stage, i.position ASC`,
     )
-    .all(...params) as any[]
+    .all(...params) as ItemRowWithMaybeProject[]
 
-  const itemIds = rows.map((r: any) => r.id)
+  const itemIds = rows.map((r) => r.id)
   const attMap = getAttachmentCounts(itemIds)
   const childMap = getChildCounts(itemIds)
   const blockedSet = getBlockedItemIds()
@@ -226,16 +246,16 @@ export function listItems(
 export function getItemDetail(id: string): ItemDetail | null {
   const db = getDb()
 
-  const row = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
+  const row = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow | undefined
   if (!row) return null
 
   const attachments = db
     .prepare('SELECT * FROM issue_attachments WHERE issue_id = ? ORDER BY created ASC')
-    .all(id)
+    .all(id) as DbAttachmentRow[]
 
   const notes = db
     .prepare('SELECT * FROM claude_notes WHERE issue_id = ? ORDER BY created ASC')
-    .all(id)
+    .all(id) as DbNoteRow[]
 
   const blocked_by = db
     .prepare(
@@ -245,7 +265,7 @@ export function getItemDetail(id: string): ItemDetail | null {
        WHERE d.item_id = ?
        ORDER BY d.created ASC`,
     )
-    .all(id) as any[]
+    .all(id) as DbBlockedByRow[]
 
   const blocks = db
     .prepare(
@@ -255,11 +275,11 @@ export function getItemDetail(id: string): ItemDetail | null {
        WHERE d.depends_on_id = ?
        ORDER BY d.created ASC`,
     )
-    .all(id) as any[]
+    .all(id) as DbBlocksRow[]
 
   const children = db
     .prepare('SELECT * FROM items WHERE parent_id = ? ORDER BY position ASC')
-    .all(id) as any[]
+    .all(id) as DbItemRow[]
 
   const blockedSet = getBlockedItemIds()
 
@@ -321,7 +341,7 @@ export function createItem(data: {
     updated: now,
   })
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow
   return parseItemRow(item)
 }
 
@@ -346,7 +366,7 @@ export function updateItem(
 ): Item | null {
   const db = getDb()
 
-  const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
+  const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow | undefined
   if (!existing) return null
 
   const allowedFields = [
@@ -384,7 +404,7 @@ export function updateItem(
 
   db.prepare(`UPDATE items SET ${setClauses.join(', ')} WHERE id = @id`).run(values)
 
-  const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any
+  const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow
   return parseItemRow(updated)
 }
 
@@ -459,7 +479,7 @@ export function getUnclaimedClaudeItems(): Item[] {
          END,
          i.position ASC`,
     )
-    .all() as any[]
+    .all() as DbItemRow[]
   return rows.map(parseItemRow)
 }
 
@@ -505,9 +525,9 @@ export function getProjectFilters(): ProjectFilter[] {
        GROUP BY i.project_slug
        ORDER BY count DESC`,
     )
-    .all() as any[]
+    .all() as { slug: string; count: number; name: string; color: string; icon: string }[]
 
-  return rows.map((p: any) => ({
+  return rows.map((p) => ({
     slug: p.slug,
     name: p.name,
     color: p.color || (p.slug === 'hub' ? '#6366f1' : ''),
@@ -532,7 +552,7 @@ export function getItemDependencies(itemId: string) {
        WHERE d.item_id = ?
        ORDER BY d.created ASC`,
     )
-    .all(itemId)
+    .all(itemId) as DbBlockedByRow[]
 
   const blocks = db
     .prepare(
@@ -542,7 +562,7 @@ export function getItemDependencies(itemId: string) {
        WHERE d.depends_on_id = ?
        ORDER BY d.created ASC`,
     )
-    .all(itemId)
+    .all(itemId) as DbBlocksRow[]
 
   return { blockedBy, blocks }
 }
@@ -577,9 +597,9 @@ export function listPhases(projectSlug: string): Phase[] {
        GROUP BY ph.id
        ORDER BY ph.position ASC`,
     )
-    .all(projectSlug) as any[]
+    .all(projectSlug) as (DbPhaseRow & { item_count: number; done_count: number })[]
 
-  return rows.map((r: any) => ({
+  return rows.map((r) => ({
     ...r,
     item_count: r.item_count ?? 0,
     done_count: r.done_count ?? 0,
@@ -592,7 +612,7 @@ export function listPhases(projectSlug: string): Phase[] {
  */
 export function getPhase(id: string): Phase | null {
   const db = getDb()
-  const row = db.prepare('SELECT * FROM phases WHERE id = ?').get(id) as any
+  const row = db.prepare('SELECT * FROM phases WHERE id = ?').get(id) as DbPhaseRow | undefined
   return row ?? null
 }
 
@@ -639,7 +659,7 @@ export function updatePhase(
   updates: Partial<{ name: string; status: string; target_date: string | null; position: number }>,
 ): Phase | null {
   const db = getDb()
-  const existing = db.prepare('SELECT * FROM phases WHERE id = ?').get(id)
+  const existing = db.prepare('SELECT * FROM phases WHERE id = ?').get(id) as DbPhaseRow | undefined
   if (!existing) return null
 
   const allowedFields = ['name', 'status', 'target_date', 'position']

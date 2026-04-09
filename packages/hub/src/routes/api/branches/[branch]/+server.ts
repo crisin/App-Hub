@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbBranchReviewRow, DbProjectRow } from '$lib/server/db'
 import {
   getBranchDiff,
   getBranchDiffStat,
@@ -17,7 +18,7 @@ function resolveRepoRoot(scope: string): string {
   const projectPath = path.join(PROJECT_ROOT, 'projects', scope)
   const templatePath = path.join(PROJECT_ROOT, 'templates', scope)
   const db = getDb()
-  const project = db.prepare('SELECT path FROM projects WHERE slug = ?').get(scope) as any
+  const project = db.prepare('SELECT path FROM projects WHERE slug = ?').get(scope) as Pick<DbProjectRow, 'path'> | undefined
   if (project?.path) return project.path
   const fs = require('node:fs')
   if (fs.existsSync(projectPath)) return projectPath
@@ -37,7 +38,7 @@ export const GET: RequestHandler = async ({ params }) => {
        JOIN items bi ON br.issue_id = bi.id
        WHERE br.branch_name = @branch`,
     )
-    .get({ branch: branchName }) as any
+    .get({ branch: branchName }) as (DbBranchReviewRow & { issue_title: string; issue_priority: string; issue_labels: string }) | undefined
 
   if (!review) {
     return error(404, 'Branch review not found')
@@ -69,7 +70,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
   const review = db
     .prepare('SELECT * FROM branch_reviews WHERE branch_name = @branch AND status = @status')
-    .get({ branch: branchName, status: 'pending' }) as any
+    .get({ branch: branchName, status: 'pending' }) as DbBranchReviewRow | undefined
 
   if (!review) {
     return error(404, 'Pending branch review not found')

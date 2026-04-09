@@ -5,8 +5,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { ATTACHMENT_MIME_TYPES, ATTACHMENT_MAX_SIZE } from '@apphub/shared'
-
-const ATTACHMENTS_DIR = path.join(process.cwd(), 'data', 'attachments')
+import { ATTACHMENTS_DIR } from '$lib/server/constants'
 
 /** GET /api/board/:id/attachments — list attachments for an issue */
 export const GET: RequestHandler = async ({ params }) => {

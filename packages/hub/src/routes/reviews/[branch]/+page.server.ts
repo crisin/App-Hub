@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbBranchReviewRow, DbProjectRow } from '$lib/server/db'
 import { error } from '@sveltejs/kit'
 import { getBranchDiff, getBranchDiffStat, getBranchCommits } from '$lib/server/git-worktree'
 import path from 'node:path'
@@ -12,7 +13,7 @@ function resolveRepoRoot(scope: string): string {
   const projectPath = path.join(PROJECT_ROOT, 'projects', scope)
   const templatePath = path.join(PROJECT_ROOT, 'templates', scope)
   const db = getDb()
-  const project = db.prepare('SELECT path FROM projects WHERE slug = ?').get(scope) as any
+  const project = db.prepare('SELECT path FROM projects WHERE slug = ?').get(scope) as Pick<DbProjectRow, 'path'> | undefined
   if (project?.path) return project.path
   if (fs.existsSync(projectPath)) return projectPath
   if (fs.existsSync(templatePath)) return templatePath
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async ({ params }) => {
        JOIN items bi ON br.issue_id = bi.id
        WHERE br.branch_name = @branch`,
     )
-    .get({ branch: branchName }) as any
+    .get({ branch: branchName }) as (DbBranchReviewRow & { issue_title: string; issue_priority: string; issue_labels: string }) | undefined
 
   if (!review) {
     error(404, 'Branch review not found')

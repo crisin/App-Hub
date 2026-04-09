@@ -11,7 +11,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
   if (body.target_date !== undefined) updates.target_date = body.target_date
   if (body.position !== undefined) updates.position = body.position
 
-  const phase = updatePhase(params.id, updates as any)
+  const phase = updatePhase(params.id, updates as Partial<{ name: string; status: string; target_date: string | null; position: number }>)
   if (!phase) {
     return json({ ok: false, error: 'Phase not found' }, { status: 404 })
   }

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
+import type { DbItemRow } from '$lib/server/db'
 
 /** GET /api/board/claude — list unclaimed items in the Claude stage */
 export const GET: RequestHandler = async () => {
@@ -20,7 +21,7 @@ export const GET: RequestHandler = async () => {
       position ASC
   `,
     )
-    .all() as any[]
+    .all() as DbItemRow[]
 
   const issues = rows.map((r) => ({ ...r, labels: JSON.parse(r.labels || '[]') }))
   return json({ ok: true, data: issues })
