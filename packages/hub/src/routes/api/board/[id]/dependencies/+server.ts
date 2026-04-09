@@ -77,7 +77,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
     .get(depends_on_id, params.id)
 
   if (circular) {
-    return json({ ok: false, error: 'Circular dependency detected' }, { status: 400 })
+    return json({ ok: false, error: 'Circular dependency detected' }, { status: 409 })
   }
 
   const id = `dep-${randomUUID().slice(0, 8)}`

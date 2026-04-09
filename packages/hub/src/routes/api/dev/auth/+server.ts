@@ -161,5 +161,5 @@ export const DELETE: RequestHandler = async ({ request }) => {
     getDb().prepare('DELETE FROM dev_refresh_tokens WHERE token = ?').run(refreshToken)
   }
 
-  return json({ ok: true }, { headers: corsHeaders(origin) })
+  return json({ ok: true, data: null }, { headers: corsHeaders(origin) })
 }

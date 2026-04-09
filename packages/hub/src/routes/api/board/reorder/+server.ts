@@ -33,5 +33,5 @@ export const PATCH: RequestHandler = async ({ request }) => {
   }
 
   emitBoardChanged()
-  return json({ ok: true })
+  return json({ ok: true, data: { reordered: normalized.length } })
 }

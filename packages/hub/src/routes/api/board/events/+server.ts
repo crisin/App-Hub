@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types'
 import { runnerEvents } from '$lib/server/claude-runner'
+import { logger } from '$lib/server/logger'
 
 /**
  * GET /api/board/events — Server-Sent Events stream.
@@ -21,8 +22,8 @@ export const GET: RequestHandler = async () => {
         try {
           const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
           controller.enqueue(encoder.encode(payload))
-        } catch {
-          // Controller may be closed
+        } catch (e: any) {
+          logger.debug('board', 'sse.write_error', `SSE write failed: ${e.message}`)
         }
       }
 

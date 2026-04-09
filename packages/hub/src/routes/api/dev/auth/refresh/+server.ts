@@ -68,6 +68,7 @@ export const POST: RequestHandler = async ({ request }) => {
         refreshToken: newRefreshToken,
         expiresIn: ACCESS_TTL,
         tokenType: 'Bearer',
+        user: { id: row.user_id, email: row.email, name: row.name, role: row.role },
       },
     },
     { headers: corsHeaders(origin) },

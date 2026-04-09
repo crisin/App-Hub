@@ -211,7 +211,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const claudeBin = findClaude()
   if (!claudeBin) {
-    return json({ ok: false, error: 'Claude CLI not found' }, { status: 500 })
+    return json({ ok: false, error: 'Claude CLI not found' }, { status: 503 })
   }
 
   const clampedCount = Math.min(Math.max(Number(count) || 5, 1), 10)
