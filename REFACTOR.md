@@ -125,7 +125,9 @@ Before deleting each one, do a final grep to confirm it's truly unused. Then upd
 
 ---
 
-## Step 4: Add Error Handling to All CLI Commands (High)
+## Step 4: Add Error Handling to All CLI Commands (High) — ✅ DONE
+
+> **Status:** Completed. `withSpinner.ts` helper created and used across all 18 command actions in 6 files. `api.ts` handles non-JSON responses safely. `board.ts` scriptPath uses `import.meta.url`.
 
 ### Problem
 
@@ -178,7 +180,9 @@ try {
 
 ---
 
-## Step 5: Remove Unused CLI Dependencies (High — quick win)
+## Step 5: Remove Unused CLI Dependencies (High — quick win) — ✅ DONE (minor leftover)
+
+> **Status:** Completed. Runtime deps (gray-matter, degit, better-sqlite3) removed. **Leftover:** `@types/better-sqlite3` still in devDependencies — orphaned, should be removed.
 
 ### Problem
 
@@ -199,7 +203,7 @@ Verify nothing breaks. These were likely copied from the hub package during init
 
 ---
 
-## Step 6: Centralize Hardcoded Constants (Medium)
+## Step 6: Centralize Hardcoded Constants (Medium) — ✅ VERIFIED
 
 ### Problem
 
@@ -238,7 +242,7 @@ Values that should come from the shared package are duplicated across the codeba
 
 ---
 
-## Step 7: Fix `as any` Type Casts in Hub (Medium)
+## Step 7: Fix `as any` Type Casts in Hub (Medium) — ✅ VERIFIED
 
 ### Problem
 
@@ -265,7 +269,7 @@ For each location:
 
 ---
 
-## Step 8: Extract Duplicated Logic in Hub Routes (Medium)
+## Step 8: Extract Duplicated Logic in Hub Routes (Medium) — ✅ VERIFIED
 
 ### Problem
 
@@ -310,7 +314,9 @@ Several patterns are copy-pasted across route files.
 
 ---
 
-## Step 9: Standardize API Response Format (Medium)
+## Step 9: Standardize API Response Format (Medium) — ⚠️ PARTIALLY DONE
+
+> **Verified:** All 6 specific bugs fixed (reorder data field, suggest 503, dependencies 409, claude/status try-catch, events error logging, refresh user field). **Incomplete:** `response.ts` helper created but never imported — all 32 routes still use raw `json()`. Helper is dead code. Functional behavior is correct, but the DRY cleanup was not completed.
 
 ### Problem
 
@@ -364,7 +370,7 @@ Then use `return ok(projects)` and `return err('Not found', 404)` across all rou
 
 ---
 
-## Step 10: Fix Race Condition in Claude Runner (Medium)
+## Step 10: Fix Race Condition in Claude Runner (Medium) — ✅ VERIFIED
 
 ### Problem
 
@@ -398,7 +404,7 @@ const claimItem = db.transaction((itemId: string, runnerId: string) => {
 
 ---
 
-## Step 11: Add Missing Validation (Low)
+## Step 11: Add Missing Validation (Low) — ✅ VERIFIED
 
 ### Locations
 
@@ -419,7 +425,9 @@ const claimItem = db.transaction((itemId: string, runnerId: string) => {
 
 ---
 
-## Step 12: Remove Unused Imports in Routes (Low — quick win)
+## Step 12: Remove Unused Imports in Routes (Low — quick win) — ✅ VERIFIED
+
+> **Note:** The three originally-flagged imports (`spawn`, `randomUUID`, `matter`) are all actively used in the current code. Either they were restored during refactoring or the original analysis was based on a different code state. No action needed.
 
 Specific unused imports found:
 
