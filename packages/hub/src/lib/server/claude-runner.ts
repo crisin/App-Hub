@@ -396,19 +396,22 @@ export function triggerRunner(): ClaudeRunnerStatus {
     return currentStatus
   }
 
-  // Claim the issue
+  // Claim the issue atomically inside a transaction
   const now = new Date().toISOString()
-  const result = db
-    .prepare(
-      `
-    UPDATE items
-    SET assigned_to = 'claude-runner', stage = 'build', updated = @now
-    WHERE id = @id AND stage = 'claude' AND (assigned_to = '' OR assigned_to IS NULL)
-  `,
-    )
-    .run({ id: issue.id, now })
+  const claimItem = db.transaction((itemId: string) => {
+    const row = db.prepare('SELECT assigned_to, stage FROM items WHERE id = ?').get(itemId) as
+      | { assigned_to: string; stage: string }
+      | undefined
+    if (!row || row.stage !== 'claude' || (row.assigned_to !== '' && row.assigned_to !== null)) {
+      return false
+    }
+    db.prepare(
+      `UPDATE items SET assigned_to = 'claude-runner', stage = 'build', updated = @now WHERE id = @id`,
+    ).run({ id: itemId, now })
+    return true
+  })
 
-  if (result.changes === 0) {
+  if (!claimItem(issue.id)) {
     setStatus({ state: 'idle' })
     return currentStatus
   }
@@ -573,9 +576,18 @@ PRIORITY: ${issue.priority}`
 
   // Buffer for incomplete JSON lines from stdout (stream-json outputs one JSON object per line)
   let stdoutBuffer = ''
+  const MAX_BUFFER_SIZE = 256 * 1024 // 256 KB max buffer before forcing a flush
 
-  currentProcess.stdout?.on('data', (data: Buffer) => {
+  const stdoutHandler = (data: Buffer) => {
     stdoutBuffer += data.toString()
+
+    // Prevent unbounded buffer growth — flush everything if too large
+    if (stdoutBuffer.length > MAX_BUFFER_SIZE) {
+      pushOutput('stdout', stdoutBuffer.slice(0, 500) + '... [truncated]')
+      stdoutBuffer = ''
+      return
+    }
+
     const lines = stdoutBuffer.split('\n')
     // Keep the last (possibly incomplete) line in the buffer
     stdoutBuffer = lines.pop() ?? ''
@@ -593,14 +605,24 @@ PRIORITY: ${issue.priority}`
         pushOutput('stdout', line)
       }
     }
-  })
+  }
 
-  currentProcess.stderr?.on('data', (data: Buffer) => {
+  const stderrHandler = (data: Buffer) => {
     const text = data.toString().trim()
     if (text) pushOutput('stderr', text)
-  })
+  }
+
+  currentProcess.stdout?.on('data', stdoutHandler)
+  currentProcess.stderr?.on('data', stderrHandler)
+
+  /** Remove listeners to prevent leaks if the process errors out */
+  function cleanupListeners() {
+    currentProcess?.stdout?.off('data', stdoutHandler)
+    currentProcess?.stderr?.off('data', stderrHandler)
+  }
 
   currentProcess.on('close', (code) => {
+    cleanupListeners()
     console.log(`[claude-runner] Finished: ${issue.title} (exit ${code})`)
     pushOutput('system', '─'.repeat(60))
     pushOutput('system', `Finished with exit code ${code}`)
@@ -778,6 +800,7 @@ PRIORITY: ${issue.priority}`
   })
 
   currentProcess.on('error', (err) => {
+    cleanupListeners()
     console.error(`[claude-runner] Error:`, err.message)
     logger.error('claude', 'runner.spawn_error', `Failed to spawn Claude process: ${err.message}`, {
       issueId: issue.id,
