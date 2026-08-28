@@ -40,14 +40,12 @@ export class OpenAICompatibleProvider implements ModelProvider {
 
   async chat(messages: ChatMessage[], opts: ChatOptions): Promise<ChatResult> {
     const started = Date.now()
-    const signal = opts.signal ?? AbortSignal.timeout(CHAT_TIMEOUT_MS)
 
-    let res: Response
-    try {
-      res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+    const doFetch = () =>
+      fetch(`${this.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: this.headers(),
-        signal,
+        signal: opts.signal ?? AbortSignal.timeout(CHAT_TIMEOUT_MS),
         body: JSON.stringify({
           model: opts.model,
           messages,
@@ -56,6 +54,18 @@ export class OpenAICompatibleProvider implements ModelProvider {
           stream: false,
         }),
       })
+
+    let res: Response
+    try {
+      try {
+        res = await doFetch()
+      } catch (first) {
+        // One retry on transient network failure — multi-call workflows
+        // (debates) must not die on a single connection hiccup
+        if (first instanceof Error && first.name === 'TimeoutError') throw first
+        await new Promise((r) => setTimeout(r, 2000))
+        res = await doFetch()
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       throw new Error(

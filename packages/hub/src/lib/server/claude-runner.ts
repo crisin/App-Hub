@@ -21,7 +21,7 @@ import {
   countBranchCommits,
   getCurrentBranch,
 } from './git-worktree.js'
-import { findClaude, execEnv } from './exec-utils.js'
+import { getCoderBackend, backendForLabels } from './coder-backends.js'
 
 export interface ClaudeRunnerStatus {
   state: 'idle' | 'running' | 'error'
@@ -387,13 +387,6 @@ export function triggerRunner(): ClaudeRunnerStatus {
     return currentStatus
   }
 
-  const claudeSpawn = findClaude()
-  if (!claudeSpawn) {
-    setStatus({ state: 'error', error: 'Claude CLI not found' })
-    logger.error('claude', 'runner.error', 'Claude CLI binary not found on system')
-    return currentStatus
-  }
-
   // Find the top unclaimed issue — skipping blocked items (via data layer)
   const db = getDb()
   const unclaimedItems = getUnclaimedClaudeItems()
@@ -401,6 +394,15 @@ export function triggerRunner(): ClaudeRunnerStatus {
 
   if (!issue) {
     setStatus({ state: 'idle' })
+    return currentStatus
+  }
+
+  // Pick the coder backend for this item (label "aider" opts into aider; default claude)
+  const backend = getCoderBackend(backendForLabels(issue.labels))
+  const probeError = backend.probe()
+  if (probeError) {
+    setStatus({ state: 'error', error: probeError })
+    logger.error('claude', 'runner.error', `Backend "${backend.name}" unavailable: ${probeError}`)
     return currentStatus
   }
 
@@ -541,7 +543,7 @@ PRIORITY: ${issue.priority}`
 - This task was picked up from the Hub kanban board (issue ${issue.id})
 - Follow the coding guidelines in CLAUDE.md if one exists`
 
-  if (branchName) {
+  if (branchName && backend.name === 'claude') {
     prompt += `
 - You are working in a git worktree on branch "${branchName}"
 - COMMIT your changes with git. Always prefix commit messages with "vibe:" (e.g., "vibe: add login form validation")
@@ -549,17 +551,25 @@ PRIORITY: ${issue.priority}`
 - Do NOT push, merge, or switch branches — the user will review and merge your branch`
   }
 
-  prompt += `
+  if (backend.name === 'claude') {
+    prompt += `
 - Track your progress by posting notes to the Hub API:
     curl -s -X POST ${HUB_URL}/api/board/${issue.id}/notes -H 'Content-Type: application/json' -d '{"type":"progress","message":"<what you are doing, max 200 chars>"}'
   Post a "progress" note when starting a major step.
 - When done, summarize what you changed`
+  } else {
+    // Aider auto-commits and cannot call APIs — keep the task self-contained
+    prompt += `
+- Implement the task completely; your changes are committed automatically
+- Do NOT push, merge, or switch branches — the user will review and merge your branch`
+  }
 
   // Spawn claude — open persistent log file
   outputLines = []
   outputSeq = 0
   const taskLogPath = openTaskLog(issue.id)
   pushOutput('system', `Starting: ${issue.title} (${issue.id})`)
+  pushOutput('system', `Backend: ${backend.name}`)
   pushOutput('system', `Log file: ${taskLogPath}`)
   pushOutput('system', `Scope: ${contextName} (${scope})`)
   pushOutput('system', `Working directory: ${workDir}`)
@@ -574,35 +584,47 @@ PRIORITY: ${issue.priority}`
     startedAt: now,
   })
 
-  console.log(`[claude-runner] Starting: ${issue.title} (${issue.id}) [scope: ${scope}]`)
+  const plan = backend.buildSpawn(prompt)
+
+  console.log(`[runner] Starting: ${issue.title} (${issue.id}) [scope: ${scope}, backend: ${backend.name}]`)
   logger.info(
     'claude',
     'runner.started',
-    `Claude runner started: "${issue.title}" in ${contextName}`,
+    `Runner started (${backend.name}): "${issue.title}" in ${contextName}`,
     {
       issueId: issue.id,
       title: issue.title,
       priority: issue.priority,
       scope,
       workDir,
-      claudeBin: claudeSpawn.bin,
+      backend: backend.name,
+      bin: plan.bin,
     },
   )
 
-  // Prompt goes via stdin — avoids argv length limits and quoting issues on Windows
-  currentProcess = spawn(
-    claudeSpawn.bin,
-    [...claudeSpawn.argsPrefix, '-p', '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob,Bash,Edit,Write'],
-    {
-      cwd: workDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: execEnv(),
-    },
-  )
-  currentProcess.stdin?.write(prompt)
+  /** Best-effort removal of the backend's temp files (e.g. aider message file) */
+  function cleanupPlanFiles() {
+    for (const f of plan.cleanupFiles) {
+      try {
+        fs.rmSync(f, { force: true })
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  currentProcess = spawn(plan.bin, plan.args, {
+    cwd: workDir,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: plan.env,
+  })
+  // Prompt via stdin where the backend wants it — avoids argv limits/quoting on Windows
+  if (plan.stdinPrompt !== null) {
+    currentProcess.stdin?.write(plan.stdinPrompt)
+  }
   currentProcess.stdin?.end()
 
-  // Buffer for incomplete JSON lines from stdout (stream-json outputs one JSON object per line)
+  // Buffer for incomplete lines from stdout (stream-json emits one JSON object per line)
   let stdoutBuffer = ''
   const MAX_BUFFER_SIZE = 256 * 1024 // 256 KB max buffer before forcing a flush
 
@@ -622,6 +644,10 @@ PRIORITY: ${issue.priority}`
 
     for (const line of lines) {
       if (!line.trim()) continue
+      if (plan.outputFormat === 'text') {
+        pushOutput('stdout', line)
+        continue
+      }
       try {
         const event = JSON.parse(line)
         const formatted = formatStreamEvent(event)
@@ -652,7 +678,8 @@ PRIORITY: ${issue.priority}`
   currentProcess.on('close', (code) => {
     cleanupListeners()
     closeTaskLog()
-    console.log(`[claude-runner] Finished: ${issue.title} (exit ${code})`)
+    cleanupPlanFiles()
+    console.log(`[runner] Finished: ${issue.title} (exit ${code})`)
     pushOutput('system', '─'.repeat(60))
     pushOutput('system', `Finished with exit code ${code}`)
 
@@ -831,7 +858,8 @@ PRIORITY: ${issue.priority}`
   currentProcess.on('error', (err) => {
     cleanupListeners()
     closeTaskLog()
-    console.error(`[claude-runner] Error:`, err.message)
+    cleanupPlanFiles()
+    console.error(`[runner] Error:`, err.message)
     logger.error('claude', 'runner.spawn_error', `Failed to spawn Claude process: ${err.message}`, {
       issueId: issue.id,
       title: issue.title,

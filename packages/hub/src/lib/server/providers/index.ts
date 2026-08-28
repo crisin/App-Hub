@@ -18,13 +18,14 @@ let registry: Record<string, ModelProvider> | null = null
 
 function buildRegistry(): Record<string, ModelProvider> {
   return {
+    // 127.0.0.1 instead of localhost — avoids IPv6/IPv4 resolution flakiness in node fetch
     ollama: new OpenAICompatibleProvider(
       'ollama',
-      process.env.APPHUB_OLLAMA_URL ?? 'http://localhost:11434',
+      process.env.APPHUB_OLLAMA_URL ?? 'http://127.0.0.1:11434',
     ),
     'openai-compatible': new OpenAICompatibleProvider(
       'openai-compatible',
-      process.env.APPHUB_OPENAI_COMPAT_URL ?? 'http://localhost:1234',
+      process.env.APPHUB_OPENAI_COMPAT_URL ?? 'http://127.0.0.1:1234',
       process.env.APPHUB_OPENAI_COMPAT_KEY,
     ),
     anthropic: new AnthropicProvider(),
