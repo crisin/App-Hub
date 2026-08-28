@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
-export type LogCategory = 'board' | 'claude' | 'project' | 'sync' | 'auth' | 'system'
+export type LogCategory = 'board' | 'claude' | 'project' | 'sync' | 'auth' | 'system' | 'agents'
 
 export interface LogEntry {
   id: string

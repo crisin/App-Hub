@@ -13,6 +13,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
     "@apphub/shared": "*",
     "@sveltejs/adapter-node": "^5.2.0",
     "@types/cytoscape": "^3.21.9",
