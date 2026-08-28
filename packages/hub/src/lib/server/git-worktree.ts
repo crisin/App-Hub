@@ -7,6 +7,7 @@
 import { execSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
+import { execEnv } from './exec-utils.js'
 
 const WORKTREE_DIR = '.worktrees'
 
@@ -16,10 +17,7 @@ function git(repoRoot: string, args: string): string {
     cwd: repoRoot,
     encoding: 'utf-8',
     timeout: 30000,
-    env: {
-      ...process.env,
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
-    },
+    env: execEnv(),
   }).trim()
 }
 

@@ -21,6 +21,7 @@ import {
   countBranchCommits,
   getCurrentBranch,
 } from './git-worktree.js'
+import { findClaude, execEnv } from './exec-utils.js'
 
 export interface ClaudeRunnerStatus {
   state: 'idle' | 'running' | 'error'
@@ -68,7 +69,6 @@ const RUNS_LOG_DIR = path.join(PROJECT_ROOT, 'logs', 'runs')
 
 /** Active log file stream for the current task */
 let currentLogStream: WriteStream | null = null
-let currentLogPath: string | null = null
 
 /**
  * Create a persistent log file for a task run.
@@ -80,7 +80,6 @@ function openTaskLog(issueId: string): string {
   const safeName = `${issueId}_${ts}.log`
   const logPath = path.join(RUNS_LOG_DIR, safeName)
   currentLogStream = createWriteStream(logPath, { flags: 'a' })
-  currentLogPath = logPath
   return logPath
 }
 
@@ -98,7 +97,6 @@ function closeTaskLog() {
     currentLogStream.end()
   }
   currentLogStream = null
-  currentLogPath = null
 }
 
 /**
@@ -164,37 +162,6 @@ function resolveScope(scope: string): { cwd: string; contextName: string } | nul
   const project = db.prepare('SELECT path, name FROM projects WHERE slug = ?').get(scope) as Pick<DbProjectRow, 'path' | 'name'> | undefined
   if (project?.path && fs.existsSync(project.path)) {
     return { cwd: project.path, contextName: `project "${project.name}"` }
-  }
-
-  return null
-}
-
-/** Find the claude binary */
-function findClaude(): string | null {
-  // 1. Check common PATH locations
-  const pathDirs = (process.env.PATH ?? '').split(':')
-  const extraDirs = ['/usr/local/bin', '/opt/homebrew/bin']
-  for (const dir of [...pathDirs, ...extraDirs]) {
-    const bin = path.join(dir, 'claude')
-    if (fs.existsSync(bin)) return bin
-  }
-
-  // 2. Check Claude Desktop App bundle (macOS)
-  const appSupport = path.join(
-    process.env.HOME ?? '',
-    'Library/Application Support/Claude/claude-code',
-  )
-  if (fs.existsSync(appSupport)) {
-    try {
-      const versions = fs.readdirSync(appSupport).sort()
-      const latest = versions[versions.length - 1]
-      if (latest) {
-        const bin = path.join(appSupport, latest, 'claude.app/Contents/MacOS/claude')
-        if (fs.existsSync(bin)) return bin
-      }
-    } catch {
-      /* ignore */
-    }
   }
 
   return null
@@ -420,8 +387,8 @@ export function triggerRunner(): ClaudeRunnerStatus {
     return currentStatus
   }
 
-  const claudeBin = findClaude()
-  if (!claudeBin) {
+  const claudeSpawn = findClaude()
+  if (!claudeSpawn) {
     setStatus({ state: 'error', error: 'Claude CLI not found' })
     logger.error('claude', 'runner.error', 'Claude CLI binary not found on system')
     return currentStatus
@@ -618,19 +585,22 @@ PRIORITY: ${issue.priority}`
       priority: issue.priority,
       scope,
       workDir,
-      claudeBin,
+      claudeBin: claudeSpawn.bin,
     },
   )
 
+  // Prompt goes via stdin — avoids argv length limits and quoting issues on Windows
   currentProcess = spawn(
-    claudeBin,
-    ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob,Bash,Edit,Write'],
+    claudeSpawn.bin,
+    [...claudeSpawn.argsPrefix, '-p', '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob,Bash,Edit,Write'],
     {
       cwd: workDir,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}` },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: execEnv(),
     },
   )
+  currentProcess.stdin?.write(prompt)
+  currentProcess.stdin?.end()
 
   // Buffer for incomplete JSON lines from stdout (stream-json outputs one JSON object per line)
   let stdoutBuffer = ''

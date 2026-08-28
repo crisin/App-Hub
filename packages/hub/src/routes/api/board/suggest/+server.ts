@@ -16,6 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { buildProjectSummary, formatSummaryForPrompt } from '$lib/server/project-summary'
 import { logger } from '$lib/server/logger'
+import { findClaude, execEnv, type ClaudeSpawnSpec } from '$lib/server/exec-utils'
 
 export interface Suggestion {
   title: string
@@ -24,36 +25,6 @@ export interface Suggestion {
   labels: string[]
   stage: string
   rationale: string
-}
-
-// ── Find Claude binary (shared with claude-runner) ──────────────
-
-function findClaude(): string | null {
-  const pathDirs = (process.env.PATH ?? '').split(':')
-  const extraDirs = ['/usr/local/bin', '/opt/homebrew/bin']
-  for (const dir of [...pathDirs, ...extraDirs]) {
-    const bin = path.join(dir, 'claude')
-    if (fs.existsSync(bin)) return bin
-  }
-
-  const appSupport = path.join(
-    process.env.HOME ?? '',
-    'Library/Application Support/Claude/claude-code',
-  )
-  if (fs.existsSync(appSupport)) {
-    try {
-      const versions = fs.readdirSync(appSupport).sort()
-      const latest = versions[versions.length - 1]
-      if (latest) {
-        const bin = path.join(appSupport, latest, 'claude.app/Contents/MacOS/claude')
-        if (fs.existsSync(bin)) return bin
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return null
 }
 
 // ── Build the prompt using project summary ─────────────────────
@@ -108,15 +79,15 @@ Respond with ONLY a JSON array. No markdown fences, no explanation, just the JSO
 
 // ── Spawn Claude and collect output ─────────────────────────────
 
-function runClaude(claudeBin: string, prompt: string, cwd: string): Promise<string> {
+function runClaude(claudeSpawn: ClaudeSpawnSpec, prompt: string, cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
-      claudeBin,
-      ['--print', '--output-format', 'text', '--max-turns', '1', '--tools', ''],
+      claudeSpawn.bin,
+      [...claudeSpawn.argsPrefix, '--print', '--output-format', 'text', '--max-turns', '1', '--tools', ''],
       {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}` },
+        env: execEnv(),
       },
     )
 
@@ -209,8 +180,8 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ok: false, error: 'project_slug is required' }, { status: 400 })
   }
 
-  const claudeBin = findClaude()
-  if (!claudeBin) {
+  const claudeSpawn = findClaude()
+  if (!claudeSpawn) {
     return json({ ok: false, error: 'Claude CLI not found' }, { status: 503 })
   }
 
@@ -239,7 +210,7 @@ export const POST: RequestHandler = async ({ request }) => {
       itemCount: summary.itemCount,
     })
 
-    const output = await runClaude(claudeBin, prompt, cwd)
+    const output = await runClaude(claudeSpawn, prompt, cwd)
     const suggestions = parseSuggestions(output)
 
     logger.info('claude', 'suggest.done', `Generated ${suggestions.length} suggestions for ${project_slug}`, {
