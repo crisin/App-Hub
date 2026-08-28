@@ -6,4 +6,8 @@ export default defineConfig({
   server: {
     port: 5174,
   },
+  // Exclude native Node modules from Vite bundling — they must be loaded at runtime
+  ssr: {
+    external: ['better-sqlite3'],
+  },
 })

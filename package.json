@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=@apphub/hub",
     "build": "npm run build --workspace=@apphub/shared && npm run build --workspace=@apphub/hub && npm run build --workspace=@apphub/cli",
+    "start": "node packages/hub/build",
     "cli": "npm run start --workspace=@apphub/cli",
     "lint": "eslint .",
     "format": "prettier --write .",

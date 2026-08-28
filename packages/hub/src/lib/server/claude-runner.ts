@@ -8,6 +8,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
+import { createWriteStream, type WriteStream } from 'node:fs'
 import { getDb } from './db.js'
 import type { DbProjectRow } from './db.js'
 import { logger } from './logger.js'
@@ -61,6 +62,44 @@ import { HUB_PORT } from '@apphub/shared'
 
 const HUB_URL = `http://localhost:${process.env.PORT ?? HUB_PORT}`
 const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
+
+/** Directory for persistent per-task output logs */
+const RUNS_LOG_DIR = path.join(PROJECT_ROOT, 'logs', 'runs')
+
+/** Active log file stream for the current task */
+let currentLogStream: WriteStream | null = null
+let currentLogPath: string | null = null
+
+/**
+ * Create a persistent log file for a task run.
+ * Returns the absolute path to the log file.
+ */
+function openTaskLog(issueId: string): string {
+  fs.mkdirSync(RUNS_LOG_DIR, { recursive: true })
+  const ts = new Date().toISOString().replace(/[:.]/g, '-')
+  const safeName = `${issueId}_${ts}.log`
+  const logPath = path.join(RUNS_LOG_DIR, safeName)
+  currentLogStream = createWriteStream(logPath, { flags: 'a' })
+  currentLogPath = logPath
+  return logPath
+}
+
+/** Write a line to the persistent log file */
+function writeToTaskLog(ch: string, text: string) {
+  if (currentLogStream && !currentLogStream.destroyed) {
+    const ts = new Date().toISOString()
+    currentLogStream.write(`[${ts}] [${ch}] ${text}\n`)
+  }
+}
+
+/** Close the current task log stream */
+function closeTaskLog() {
+  if (currentLogStream && !currentLogStream.destroyed) {
+    currentLogStream.end()
+  }
+  currentLogStream = null
+  currentLogPath = null
+}
 
 /**
  * SSE Event Bus — emits typed events for real-time client updates.
@@ -258,8 +297,10 @@ function pushOutput(ch: OutputLine['ch'], text: string) {
     outputLines.push(entry)
     newLines.push(entry)
     outputSeq++
+    // Write to persistent log file
+    writeToTaskLog(ch, line)
   }
-  // Keep max 2000 lines
+  // Keep max 2000 lines in memory (full output is on disk)
   if (outputLines.length > 2000) {
     outputLines = outputLines.slice(-1500)
   }
@@ -451,44 +492,59 @@ export function triggerRunner(): ClaudeRunnerStatus {
   let worktreePath: string | null = null
   let baseBranch = 'main'
 
-  if (isGitRepo(repoRoot)) {
-    try {
-      baseBranch = getCurrentBranch(repoRoot)
-      branchName = branchNameFromIssue(issue.id, issue.title)
-      worktreePath = createWorktree(repoRoot, branchName)
-      workDir = worktreePath
+  if (!isGitRepo(repoRoot)) {
+    const errMsg = `Scope "${scope}" (${repoRoot}) is not a git repository — cannot create isolated worktree`
+    logger.error('claude', 'runner.no_git', errMsg, { issueId: issue.id, scope })
+    addNote(issue.id, 'error', errMsg)
+    // Unclaim the item so it goes back to the claude lane for retry
+    db.prepare(
+      `UPDATE items SET assigned_to = '', stage = 'claude', updated = @now WHERE id = @id`,
+    ).run({ id: issue.id, now })
+    emitBoardChanged()
+    setStatus({ state: 'error', issueId: issue.id, issueTitle: issue.title, error: errMsg })
+    return currentStatus
+  }
 
-      // Record the branch review in the DB
-      const reviewId = `br-${Date.now().toString(36)}`
-      db.prepare(
-        `INSERT INTO branch_reviews (id, issue_id, branch_name, project_scope, worktree_path, base_branch, status, created)
-         VALUES (@id, @issue_id, @branch_name, @project_scope, @worktree_path, @base_branch, 'pending', @created)`,
-      ).run({
-        id: reviewId,
-        issue_id: issue.id,
-        branch_name: branchName,
-        project_scope: scope,
-        worktree_path: worktreePath,
-        base_branch: baseBranch,
-        created: now,
-      })
+  try {
+    baseBranch = getCurrentBranch(repoRoot)
+    branchName = branchNameFromIssue(issue.id, issue.title)
+    worktreePath = createWorktree(repoRoot, branchName)
+    workDir = worktreePath
 
-      pushOutput('system', `Branch: ${branchName}`)
-      pushOutput('system', `Worktree: ${worktreePath}`)
-    } catch (err) {
-      // Fall back to direct-write if worktree creation fails
-      const errMsg = err instanceof Error ? err.message : String(err)
-      logger.warn(
-        'claude',
-        'runner.worktree_fallback',
-        `Worktree creation failed, working directly in repo: ${errMsg}`,
-        { issueId: issue.id, error: errMsg },
-      )
-      pushOutput('system', `⚠ Worktree failed (${errMsg}), working directly`)
-      workDir = repoRoot
-      branchName = null
-      worktreePath = null
-    }
+    // Record the branch review in the DB
+    const reviewId = `br-${Date.now().toString(36)}`
+    db.prepare(
+      `INSERT INTO branch_reviews (id, issue_id, branch_name, project_scope, worktree_path, base_branch, status, created)
+       VALUES (@id, @issue_id, @branch_name, @project_scope, @worktree_path, @base_branch, 'pending', @created)`,
+    ).run({
+      id: reviewId,
+      issue_id: issue.id,
+      branch_name: branchName,
+      project_scope: scope,
+      worktree_path: worktreePath,
+      base_branch: baseBranch,
+      created: now,
+    })
+
+    pushOutput('system', `Branch: ${branchName}`)
+    pushOutput('system', `Worktree: ${worktreePath}`)
+  } catch (err) {
+    // Worktree creation failed — do NOT fall back to direct-write (would contaminate main branch)
+    const errMsg = err instanceof Error ? err.message : String(err)
+    logger.error(
+      'claude',
+      'runner.worktree_error',
+      `Worktree creation failed for "${issue.title}": ${errMsg}`,
+      { issueId: issue.id, error: errMsg },
+    )
+    addNote(issue.id, 'error', `Worktree creation failed: ${errMsg}. Item returned to Claude lane for retry.`)
+    // Unclaim the item so it goes back to the claude lane for retry
+    db.prepare(
+      `UPDATE items SET assigned_to = '', stage = 'claude', updated = @now WHERE id = @id`,
+    ).run({ id: issue.id, now })
+    emitBoardChanged()
+    setStatus({ state: 'error', issueId: issue.id, issueTitle: issue.title, error: `Worktree failed: ${errMsg}` })
+    return currentStatus
   }
 
   // Build prompt — include project-level description and context if available
@@ -532,10 +588,12 @@ PRIORITY: ${issue.priority}`
   Post a "progress" note when starting a major step.
 - When done, summarize what you changed`
 
-  // Spawn claude
+  // Spawn claude — open persistent log file
   outputLines = []
   outputSeq = 0
+  const taskLogPath = openTaskLog(issue.id)
   pushOutput('system', `Starting: ${issue.title} (${issue.id})`)
+  pushOutput('system', `Log file: ${taskLogPath}`)
   pushOutput('system', `Scope: ${contextName} (${scope})`)
   pushOutput('system', `Working directory: ${workDir}`)
   pushOutput('system', `Priority: ${issue.priority}`)
@@ -623,6 +681,7 @@ PRIORITY: ${issue.priority}`
 
   currentProcess.on('close', (code) => {
     cleanupListeners()
+    closeTaskLog()
     console.log(`[claude-runner] Finished: ${issue.title} (exit ${code})`)
     pushOutput('system', '─'.repeat(60))
     pushOutput('system', `Finished with exit code ${code}`)
@@ -801,6 +860,7 @@ PRIORITY: ${issue.priority}`
 
   currentProcess.on('error', (err) => {
     cleanupListeners()
+    closeTaskLog()
     console.error(`[claude-runner] Error:`, err.message)
     logger.error('claude', 'runner.spawn_error', `Failed to spawn Claude process: ${err.message}`, {
       issueId: issue.id,

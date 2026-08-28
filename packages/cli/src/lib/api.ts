@@ -14,7 +14,14 @@ export async function hubFetch<T = any>(path: string, options?: RequestInit): Pr
     })
   } catch (err) {
     throw new Error(
-      `Could not connect to hub at ${HUB_URL}. Is it running? (npm run dev)`,
+      `Could not connect to App Hub at ${HUB_URL}.\n` +
+      `\n` +
+      `Is the hub running? Start it with:\n` +
+      `  npm run dev                           # development mode\n` +
+      `  npm run start                         # production mode\n` +
+      `  launchctl kickstart gui/$(id -u)/com.apphub.server  # if installed as service\n` +
+      `\n` +
+      `Check health: curl -s ${HUB_URL}/api/health | jq`,
     )
   }
 

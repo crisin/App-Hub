@@ -143,6 +143,17 @@ npm install                                  # install all workspace deps
 npm run build --workspace=@apphub/shared     # build shared types (do this first)
 npm run dev                                  # start hub dev server (localhost:5174)
 
+# Production
+npm run build                                # build all packages (shared → hub → cli)
+npm run start                                # start production server (node build)
+
+# Service (macOS launchd)
+./scripts/install-service.sh                 # install as login item, starts on boot
+./scripts/uninstall-service.sh               # remove the service
+
+# Health check
+curl -s http://localhost:5174/api/health | jq
+
 # CLI (hub must be running)
 npm run cli -- new "My App" --template expo-app
 npm run cli -- list
@@ -161,6 +172,7 @@ All endpoints return `{ ok: boolean, data?: T, error?: string }`.
 
 | Method | Path                                | Description                                      |
 | ------ | ----------------------------------- | ------------------------------------------------ |
+| GET    | `/api/health`                       | Health check (uptime, db, runner, pid)           |
 | GET    | `/api/projects?sync=true`           | List projects (sync=true re-scans disk)          |
 | POST   | `/api/projects`                     | Create project `{ name, template }`              |
 | GET    | `/api/projects/:slug`               | Get project detail                               |
@@ -181,14 +193,19 @@ All endpoints return `{ ok: boolean, data?: T, error?: string }`.
 | GET    | `/api/board/:id/attachments/:attId` | Download/serve attachment                        |
 | DELETE | `/api/board/:id/attachments/:attId` | Delete attachment                                |
 
-## Current State (v0.1.0 skeleton)
+## Current State (v0.1.0 → v0.2.0 in progress)
 
 What's built and working:
 
 - Full monorepo structure with npm workspaces
 - Shared types package (@apphub/shared) — builds successfully
 - SvelteKit hub with dark-themed dashboard UI (project grid, project detail page with task management)
-- All API routes (projects CRUD, tasks CRUD, sync, templates, dev auth)
+- Kanban board with 6-stage pipeline (idea → plan → build → claude → review → done)
+- Claude runner — spawns Claude CLI to autonomously work on board items
+- Git worktree isolation per task (no direct-write fallback — errors on failure)
+- SSE real-time updates (output streaming, status changes, board mutations)
+- Persistent per-task output logging to `logs/runs/`
+- All API routes (projects CRUD, tasks CRUD, sync, templates, dev auth, board, health)
 - SQLite database layer with auto-migration
 - Markdown parsers for .apphub.md and TASKS.md
 - Filesystem scanner with SQLite sync
@@ -196,41 +213,38 @@ What's built and working:
 - CLI with all core commands (new, list, status, task, sync)
 - 3 starter templates (Expo, Next.js, SvelteKit)
 - Dev auth API with in-memory token store and auto-user creation
+- **Production build** via `@sveltejs/adapter-node` (`npm run build` → `npm run start`)
+- **macOS Launch Agent** scripts for running as a persistent service
+- **Health endpoint** (`GET /api/health`)
+- **Environment-based configuration** via `apphub.config.ts` with `APPHUB_*` env var overrides
 
 ## What Needs Work Next
 
-Priority items for continued development:
+See `ARCHITECTURE-V2.md` for the full roadmap. Current priorities:
 
-1. **Get it running end-to-end**: Run `npm run dev`, test creating a project through the UI, verify the whole flow works. Fix any import/runtime issues.
+### v2 Phase 2A: Runner Concurrency
+- Task queue with configurable concurrency (`APPHUB_MAX_CONCURRENT`)
+- Task lifecycle states (claimed → running → completed/failed/cancelled)
+- SSE multiplexing for parallel task output
+- Dashboard updates for multi-task display
 
-2. **Templates need fleshing out**: Current templates are minimal skeletons. They should include proper configs, linting, a `CLAUDE.md` for the spawned project, and sensible defaults for the target stack.
+### v2 Phase 2B: Direct Anthropic API (optional)
+- Tool execution layer (read, write, edit, bash, grep, glob)
+- Multi-turn conversation loop with streaming
+- Token/cost tracking per task
+- Runner mode toggle (`APPHUB_RUNNER_MODE=cli|api`)
 
-3. **Improve the dashboard UI**:
-   - Search/filter projects by name, status, tags
-   - Sort options (by date, status, name)
-   - Project deletion / archival
-   - Better task board UX (drag-and-drop between status columns)
-   - Charts/analytics (tasks completed over time, projects by status)
+### v2 Phase 3: Self-Modification
+- Hub self-registration as project `apphub`
+- Safety gates (feature flag, cooldown, max-in-flight, depth limit)
+- Validation pipeline (typecheck → build → smoke test)
+- Human review gate (no auto-merge)
+- Graceful restart after merge
 
-4. **CLI improvements**:
-   - `apphub open <slug>` — open project in editor (VS Code / Cursor)
-   - `apphub archive <slug>` — quick archive
-   - `apphub template list` — list templates
-   - Interactive template picker when `--template` is omitted
-   - Tab completion
-
-5. **Dev API expansion**:
-   - File upload mock endpoint
-   - Mock push notification endpoint
-   - Mock payment/billing endpoint
-   - CORS configuration for spawned projects to hit the hub
-   - Configurable response delays for testing loading states
-
-6. **CLAUDE.md generation for spawned projects**: When a project is created, auto-generate a CLAUDE.md inside it that describes the template, links back to the hub API, and includes useful defaults for Claude Code.
-
-7. **File watcher**: Watch `projects/` for changes and auto-sync to SQLite (instead of manual sync).
-
-8. **Templates page**: Build the `/templates` page in the hub UI (route exists in nav but page is missing).
+### Other improvements
+- Templates page in hub UI
+- CLAUDE.md generation for spawned projects
+- File watcher for auto-sync
 
 ## Architecture Decisions & Rationale
 

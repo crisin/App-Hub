@@ -29,6 +29,7 @@ Thumbs.db
 
 # Logs
 *.log
+/logs/
 
 # Spawned projects (each has its own git repo)
 /projects/
