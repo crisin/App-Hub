@@ -13,6 +13,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getAgent, runAgent, type AgentDef } from './agents.js'
+import { getItemDetail, addClaudeNote } from './data.js'
+import { getDb } from './db.js'
+import { emitBoardChanged } from './claude-runner.js'
 import { logger } from './logger.js'
 
 const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
@@ -157,4 +160,86 @@ export async function runDebate(topic: string, opts: DebateOptions = {}): Promis
   })
 
   return { topic, turns, verdict: verdictResult.text, reportPath, totalDurationMs }
+}
+
+// ── Board integration ───────────────────────────────────────────────
+
+/** Build the debate topic for a board item: title + description + project context */
+export function buildItemTopic(itemId: string): string | null {
+  const item = getItemDetail(itemId)
+  if (!item) return null
+
+  let topic = `# ${item.title}`
+  if (item.description?.trim()) {
+    topic += `\n\n${item.description.trim()}`
+  }
+  if (item.project_slug) {
+    const db = getDb()
+    const project = db
+      .prepare('SELECT name, description FROM projects WHERE slug = ?')
+      .get(item.project_slug) as { name?: string; description?: string } | undefined
+    if (project?.name) {
+      topic += `\n\n(Context: this is an idea for the project "${project.name}"`
+      if (project.description) topic += ` — ${project.description}`
+      topic += `)`
+    }
+  }
+  return topic
+}
+
+/**
+ * Run the debate on a board item and record the verdict as a note.
+ * Used by the critique API route and the "debate" label hook.
+ */
+export async function critiqueBoardItem(
+  itemId: string,
+  opts: DebateOptions = {},
+): Promise<DebateResult> {
+  const topic = buildItemTopic(itemId)
+  if (!topic) throw new Error(`Item "${itemId}" not found`)
+
+  const result = await runDebate(topic, opts)
+
+  // Verdict summary as a note on the item (notes are capped at 200 chars)
+  const scoreMatch = result.verdict.match(/\*\*Score:\*\*\s*(\d+)/i)
+  const recMatch = result.verdict.match(/\b(PROCEED|REVISE|DROP)\b/)
+  const summary = [
+    'Debate verdict:',
+    scoreMatch ? `score ${scoreMatch[1]}/10,` : '',
+    recMatch ? recMatch[1] : 'see report',
+    `— ${result.reportPath}`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+  addClaudeNote(itemId, 'info', summary)
+  emitBoardChanged()
+
+  return result
+}
+
+/**
+ * Fire-and-forget hook: items labeled "debate" get critiqued automatically
+ * on creation. Errors land as a note on the item, never in the caller.
+ */
+export function autoCritiqueIfLabeled(itemId: string, labels: unknown): void {
+  if (!Array.isArray(labels) || !labels.map(String).includes('debate')) return
+
+  logger.info('agents', 'debate.auto', `Auto-critique triggered for ${itemId} (label "debate")`, {
+    itemId,
+  })
+  addClaudeNote(itemId, 'progress', 'Debate started (label "debate") — verdict will follow')
+  emitBoardChanged()
+
+  void critiqueBoardItem(itemId).catch((e) => {
+    const msg = e instanceof Error ? e.message : String(e)
+    logger.error('agents', 'debate.auto_error', `Auto-critique failed for ${itemId}: ${msg}`, {
+      itemId,
+    })
+    try {
+      addClaudeNote(itemId, 'error', `Debate failed: ${msg}`.slice(0, 200))
+      emitBoardChanged()
+    } catch {
+      /* ignore */
+    }
+  })
 }

@@ -242,7 +242,8 @@ What's built and working:
 - **Local AI agent layer** — provider abstraction (Ollama/OpenAI-compatible + Anthropic SDK),
   agent registry (`agents/*.md`), `/agents` UI page, `agent` CLI commands
 - **Debate workflow (critic mode)** — critic vs. advocate rounds + judge verdict on board
-  items; report to `logs/agents/`, verdict note on the item
+  items; report to `logs/agents/`, verdict note on the item. Creating an item with
+  label `debate` triggers it automatically (fire-and-forget)
 - **Coder backends** — board runner spawns Claude CLI (default) or aider against a local
   model (item label `aider`), same worktree → commits → review-lane pipeline
 

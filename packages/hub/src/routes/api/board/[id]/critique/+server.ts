@@ -8,10 +8,8 @@
  */
 import type { RequestHandler } from './$types'
 import { ok, err } from '$lib/server/response'
-import { getItemDetail, addClaudeNote } from '$lib/server/data'
-import { getDb } from '$lib/server/db'
-import { runDebate } from '$lib/server/debate'
-import { emitBoardChanged } from '$lib/server/claude-runner'
+import { getItemDetail } from '$lib/server/data'
+import { critiqueBoardItem } from '$lib/server/debate'
 import { logger } from '$lib/server/logger'
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -28,45 +26,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
     return err('Invalid JSON body', 400)
   }
 
-  // Build the debate topic from item + project context
-  let topic = `# ${item.title}`
-  if (item.description?.trim()) {
-    topic += `\n\n${item.description.trim()}`
-  }
-  if (item.project_slug) {
-    const db = getDb()
-    const project = db
-      .prepare('SELECT name, description FROM projects WHERE slug = ?')
-      .get(item.project_slug) as { name?: string; description?: string } | undefined
-    if (project?.name) {
-      topic += `\n\n(Context: this is an idea for the project "${project.name}"`
-      if (project.description) topic += ` — ${project.description}`
-      topic += `)`
-    }
-  }
-
   try {
-    const result = await runDebate(topic, {
+    const result = await critiqueBoardItem(item.id, {
       rounds: typeof body.rounds === 'number' ? body.rounds : undefined,
       criticSlug: typeof body.critic === 'string' ? body.critic : undefined,
       advocateSlug: typeof body.advocate === 'string' ? body.advocate : undefined,
       judgeSlug: typeof body.judge === 'string' ? body.judge : undefined,
     })
-
-    // Verdict summary as a note on the item (notes are capped at 200 chars)
-    const scoreMatch = result.verdict.match(/\*\*Score:\*\*\s*(\d+)/i)
-    const recMatch = result.verdict.match(/\b(PROCEED|REVISE|DROP)\b/)
-    const summary = [
-      'Debate verdict:',
-      scoreMatch ? `score ${scoreMatch[1]}/10,` : '',
-      recMatch ? recMatch[1] : 'see report',
-      `— ${result.reportPath}`,
-    ]
-      .filter(Boolean)
-      .join(' ')
-    addClaudeNote(item.id, 'info', summary)
-    emitBoardChanged()
-
     return ok(result)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

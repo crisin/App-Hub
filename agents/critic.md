@@ -1,8 +1,10 @@
 ---
 name: Critic
 description: Attacks ideas hard but fair to expose real weaknesses before they cost time
+# gpt-oss:20b: MoE — fast even on CPU. On a strong GPU/M-series box,
+# qwen3:32b-q4_K_M gives deeper critiques (but is a thinking model: raise maxTokens).
 provider: ollama
-model: qwen3:32b-q4_K_M
+model: gpt-oss:20b
 temperature: 0.7
 maxTokens: 1500
 ---

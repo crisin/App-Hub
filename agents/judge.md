@@ -2,7 +2,7 @@
 name: Judge
 description: Reads a debate transcript and delivers a structured, actionable verdict
 provider: ollama
-model: qwen3:32b-q4_K_M
+model: gpt-oss:20b
 temperature: 0.3
 maxTokens: 1500
 ---
