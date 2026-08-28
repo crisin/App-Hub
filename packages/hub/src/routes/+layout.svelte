@@ -41,6 +41,9 @@
       <a href="/reviews" class="nav-link" class:active={currentPath === '/reviews'}>
         <span>&#x2714;</span> Reviews
       </a>
+      <a href="/agents" class="nav-link" class:active={currentPath === '/agents'}>
+        <span>&#x2731;</span> Agents
+      </a>
       <a href="/templates" class="nav-link" class:active={currentPath === '/templates'}>
         <span>&#x2B9E;</span> Templates
       </a>

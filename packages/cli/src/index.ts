@@ -6,6 +6,7 @@ import { statusCommand } from './commands/status.js'
 import { taskCommand } from './commands/task.js'
 import { syncCommand } from './commands/sync.js'
 import { boardCommand } from './commands/board.js'
+import { agentCommand } from './commands/agent.js'
 
 const program = new Command()
 
@@ -20,5 +21,6 @@ program.addCommand(statusCommand)
 program.addCommand(taskCommand)
 program.addCommand(syncCommand)
 program.addCommand(boardCommand)
+program.addCommand(agentCommand)
 
 program.parse()
