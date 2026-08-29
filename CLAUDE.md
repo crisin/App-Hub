@@ -31,6 +31,7 @@ The goal: go from "I have an idea" to "I have a running project with structure, 
 
 ```
 App Hub/                          ← project root (npm workspace root)
+├── .apphub.md                    ← the hub registers itself as project "hub" (dogfooding)
 ├── CLAUDE.md                     ← this file
 ├── ARCHITECTURE.md               ← detailed architecture documentation
 ├── apphub.config.ts              ← global configuration
@@ -246,6 +247,11 @@ What's built and working:
   label `debate` triggers it automatically (fire-and-forget)
 - **Coder backends** — board runner spawns Claude CLI (default) or aider against a local
   model (item label `aider`), same worktree → commits → review-lane pipeline
+- **Dogfooding** — the hub is registered as project `hub` via `.apphub.md` in the repo
+  root; its own roadmap lives on the board. Worktrees get node_modules junctions from
+  the main checkout so hub coding tasks can typecheck/build without per-task installs.
+  After merging hub changes, restart the server (`npm run dev` caches the runner module
+  graph — HMR is not enough for runner/backend changes)
 
 ## What Needs Work Next
 

@@ -47,6 +47,62 @@ export function branchNameFromIssue(issueId: string, title: string): string {
   return `claude/${shortId}-${slug}`
 }
 
+/** node_modules locations to mirror into a worktree (root + workspace packages) */
+function nodeModulesPaths(root: string): string[] {
+  const rels = ['node_modules']
+  const pkgs = path.join(root, 'packages')
+  if (fs.existsSync(pkgs)) {
+    try {
+      for (const entry of fs.readdirSync(pkgs, { withFileTypes: true })) {
+        if (entry.isDirectory()) rels.push(path.join('packages', entry.name, 'node_modules'))
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return rels
+}
+
+/**
+ * Link the main checkout's node_modules into a worktree (junction on Windows,
+ * symlink elsewhere) so agents can typecheck/build without an install per task.
+ * Caveat: workspace self-links inside node_modules point at the MAIN checkout's
+ * packages — a task editing @apphub/shared types sees the main build until merged.
+ */
+function linkNodeModules(repoRoot: string, worktreePath: string): void {
+  for (const rel of nodeModulesPaths(repoRoot)) {
+    const target = path.join(repoRoot, rel)
+    const link = path.join(worktreePath, rel)
+    if (!fs.existsSync(target) || fs.existsSync(link)) continue
+    try {
+      fs.symlinkSync(target, link, 'junction')
+    } catch {
+      /* non-fatal — agent can still npm install */
+    }
+  }
+}
+
+/** Remove node_modules links from a worktree (link only, never the contents) */
+function unlinkNodeModules(worktreePath: string): void {
+  for (const rel of nodeModulesPaths(worktreePath)) {
+    const link = path.join(worktreePath, rel)
+    try {
+      if (!fs.lstatSync(link).isSymbolicLink()) continue
+    } catch {
+      continue
+    }
+    try {
+      fs.rmdirSync(link) // removes the junction/symlink itself, not the target
+    } catch {
+      try {
+        fs.unlinkSync(link)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
 /** Create a worktree on a new branch. Returns the worktree path. */
 export function createWorktree(repoRoot: string, branchName: string): string {
   const worktreePath = path.join(repoRoot, WORKTREE_DIR, branchName.replace('/', '-'))
@@ -57,12 +113,18 @@ export function createWorktree(repoRoot: string, branchName: string): string {
   // Create worktree with a new branch from HEAD
   git(repoRoot, `worktree add "${worktreePath}" -b "${branchName}"`)
 
+  // Make installed dependencies available inside the worktree
+  linkNodeModules(repoRoot, worktreePath)
+
   return worktreePath
 }
 
 /** Remove a worktree and optionally delete the branch */
 export function removeWorktree(repoRoot: string, branchName: string, deleteBranch = false): void {
   const worktreePath = path.join(repoRoot, WORKTREE_DIR, branchName.replace('/', '-'))
+
+  // Drop dependency links first so nothing ever deletes through them
+  unlinkNodeModules(worktreePath)
 
   try {
     git(repoRoot, `worktree remove "${worktreePath}" --force`)
