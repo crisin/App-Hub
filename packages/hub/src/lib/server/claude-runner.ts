@@ -480,11 +480,21 @@ export function triggerRunner(): ClaudeRunnerStatus {
     worktreePath = createWorktree(repoRoot, branchName)
     workDir = worktreePath
 
-    // Record the branch review in the DB
+    // Record the branch review in the DB. Branch names are deterministic
+    // (issue id + title), so a re-run of an item after a discarded/merged
+    // review reuses the same name — upsert instead of failing on UNIQUE.
     const reviewId = `br-${Date.now().toString(36)}`
     db.prepare(
       `INSERT INTO branch_reviews (id, issue_id, branch_name, project_scope, worktree_path, base_branch, status, created)
-       VALUES (@id, @issue_id, @branch_name, @project_scope, @worktree_path, @base_branch, 'pending', @created)`,
+       VALUES (@id, @issue_id, @branch_name, @project_scope, @worktree_path, @base_branch, 'pending', @created)
+       ON CONFLICT(branch_name) DO UPDATE SET
+         issue_id = excluded.issue_id,
+         project_scope = excluded.project_scope,
+         worktree_path = excluded.worktree_path,
+         base_branch = excluded.base_branch,
+         status = 'pending',
+         commit_count = 0,
+         created = excluded.created`,
     ).run({
       id: reviewId,
       issue_id: issue.id,
@@ -715,7 +725,26 @@ PRIORITY: ${issue.priority}`
 
       const doneNow = new Date().toISOString()
 
-      if (branchName) {
+      if (branchName && countBranchCommits(repoRoot, branchName, baseBranch) === 0) {
+        // Exit 0 but nothing committed — nothing to review. Clean up and
+        // park the item in "build" (not "claude": would auto-retrigger in a loop).
+        addNote(
+          issue.id,
+          'error',
+          `Finished without commits after ${durationStr} — check the run log; item moved to build`,
+        )
+        try {
+          removeWorktree(repoRoot, branchName, true)
+          db.prepare(`DELETE FROM branch_reviews WHERE branch_name = @branch`).run({
+            branch: branchName,
+          })
+        } catch {
+          /* cleanup best-effort */
+        }
+        db.prepare(
+          `UPDATE items SET stage = 'build', assigned_to = '', updated = @now WHERE id = @id`,
+        ).run({ id: issue.id, now: doneNow })
+      } else if (branchName) {
         // Branch workflow: move to review lane
         const commitCount = countBranchCommits(repoRoot, branchName, baseBranch)
         addNote(
@@ -757,6 +786,7 @@ PRIORITY: ${issue.priority}`
         ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
       }
 
+      const finalCommits = branchName ? countBranchCommits(repoRoot, branchName, baseBranch) : 0
       addHistoryEntry({
         issueId: issue.id,
         issueTitle: issue.title,
@@ -764,8 +794,8 @@ PRIORITY: ${issue.priority}`
         startedAt: now,
         finishedAt: new Date().toISOString(),
         exitCode: code,
-        outcome: 'success',
-        commitCount: branchName ? countBranchCommits(repoRoot, branchName, baseBranch) : 0,
+        outcome: branchName && finalCommits === 0 ? 'partial' : 'success',
+        commitCount: finalCommits,
         branch: branchName || undefined,
       })
 

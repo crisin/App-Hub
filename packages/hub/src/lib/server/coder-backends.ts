@@ -102,6 +102,11 @@ const aiderBackend: CoderBackend = {
     fs.writeFileSync(msgFile, prompt, 'utf-8')
 
     const model = process.env.APPHUB_AIDER_MODEL ?? 'ollama_chat/qwen3-coder:30b'
+    // Pin weak model (commit messages) AND editor model (architect mode) to
+    // existing models: aider's guesses — and stale ~/.aider.conf.yml entries —
+    // may reference models that aren't pulled locally, causing 404 retry-loops.
+    const weakModel = process.env.APPHUB_AIDER_WEAK_MODEL ?? model
+    const editorModel = process.env.APPHUB_AIDER_EDITOR_MODEL ?? model
     const ollamaUrl = process.env.APPHUB_OLLAMA_URL ?? 'http://127.0.0.1:11434'
 
     return {
@@ -111,6 +116,10 @@ const aiderBackend: CoderBackend = {
         msgFile,
         '--model',
         model,
+        '--weak-model',
+        weakModel,
+        '--editor-model',
+        editorModel,
         '--yes-always',
         '--no-check-update',
         '--no-show-model-warnings',
