@@ -63,11 +63,11 @@ cat > "$PLIST_PATH" <<EOF
     <key>ProgramArguments</key>
     <array>
         <string>$NODE_BIN</string>
-        <string>$BUILD_DIR</string>
+        <string>$APPHUB_ROOT/scripts/start.mjs</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>$APPHUB_ROOT/packages/hub</string>
+    <string>$APPHUB_ROOT</string>
 
     <key>EnvironmentVariables</key>
     <dict>
