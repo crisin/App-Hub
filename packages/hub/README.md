@@ -1,42 +1,11 @@
-# sv
+# @apphub/hub
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The App Hub server: SvelteKit 2 + Svelte 5 dashboard, JSON API, board runner and agents.
 
-## Creating a project
+Documentation lives in the repo root: [`CLAUDE.md`](../../CLAUDE.md) for working on the code,
+[`docs/`](../../docs/README.md) for everything else (also shown in the app's help panel).
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project
-npx sv create my-app
+```bash
+npm run dev      # from the repo root: vite dev on http://localhost:5174
+npm run check    # svelte-check
 ```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-pnpm dlx sv@0.14.0 create --template minimal --types ts --install pnpm .
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
