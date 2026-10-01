@@ -51,10 +51,11 @@ boardCommand
   .option('--priority <priority>', 'Priority (low, medium, high, critical)', 'medium')
   .option('--labels <labels>', 'Comma-separated labels')
   .option('-d, --description <desc>', 'Item description')
+  .option('-p, --project <slug>', 'Project the item belongs to', 'hub')
   .action(
     async (
       title: string,
-      options: { stage: string; priority: string; labels?: string; description?: string },
+      options: { stage: string; priority: string; labels?: string; description?: string; project: string },
     ) => {
       const item = await withSpinner('Adding item...', () =>
         hubFetch('/api/board', {
@@ -69,6 +70,7 @@ boardCommand
                 .map((l) => l.trim())
                 .filter(Boolean) ?? [],
             description: options.description ?? '',
+            project_slug: options.project,
           }),
         }),
       )
