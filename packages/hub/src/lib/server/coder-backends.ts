@@ -122,6 +122,8 @@ const aiderBackend: CoderBackend = {
         editorModel,
         '--yes-always',
         '--no-check-update',
+        // the hub keeps .aider* out of git via .git/info/exclude — aider must not edit .gitignore
+        '--no-gitignore',
         '--no-show-model-warnings',
         '--no-pretty',
         '--no-stream',

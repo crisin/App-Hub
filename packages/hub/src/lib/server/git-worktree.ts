@@ -95,10 +95,13 @@ function excludeWorktreeDir(repoRoot: string): void {
     const commonDir = path.resolve(repoRoot, git(repoRoot, 'rev-parse --git-common-dir'))
     const excludeFile = path.join(commonDir, 'info', 'exclude')
     const current = fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, 'utf-8') : ''
-    if (current.split(/\r?\n/).some((line) => line.trim() === `/${WORKTREE_DIR}/`)) return
+    const lines = current.split(/\r?\n/).map((line) => line.trim())
+    // the worktrees themselves + aider's chat/history/cache files inside them
+    const missing = [`/${WORKTREE_DIR}/`, '.aider*'].filter((p) => !lines.includes(p))
+    if (missing.length === 0) return
     fs.mkdirSync(path.dirname(excludeFile), { recursive: true })
     const sep = current && !current.endsWith('\n') ? '\n' : ''
-    fs.appendFileSync(excludeFile, `${sep}# App Hub: coding-agent worktrees\n/${WORKTREE_DIR}/\n`)
+    fs.appendFileSync(excludeFile, `${sep}# App Hub: coding-agent worktrees\n${missing.join('\n')}\n`)
   } catch {
     /* non-fatal — at worst .worktrees/ shows up as untracked */
   }
