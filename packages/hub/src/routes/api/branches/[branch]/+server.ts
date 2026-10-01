@@ -9,6 +9,7 @@ import {
   removeWorktree,
 } from '$lib/server/git-worktree'
 import { logger } from '$lib/server/logger'
+import { moveItem } from '$lib/server/data'
 import { resolveProjectScope } from '$lib/server/scanner'
 import { HUB_ROOT } from '$lib/server/config'
 
@@ -83,10 +84,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
   ).run({ now, branch: branchName })
 
   // Move issue back to backlog
-  db.prepare(`UPDATE items SET stage = 'idea', updated = @now WHERE id = @id`).run({
-    now,
-    id: review.issue_id,
-  })
+  moveItem(review.issue_id, { stage: 'idea' })
 
   logger.info('claude', 'branch.discarded', `Discarded branch ${branchName}`, {
     branch: branchName,

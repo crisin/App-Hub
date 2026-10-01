@@ -11,7 +11,8 @@ import path from 'node:path'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { getDb } from './db.js'
 import { logger } from './logger.js'
-import { addClaudeNote, getUnclaimedClaudeItems, hasUnclaimedClaudeItems } from './data.js'
+import { addClaudeNote, getUnclaimedClaudeItems, hasUnclaimedClaudeItems, moveItem } from './data.js'
+import { persistItem } from './board-files.js'
 import {
   isGitRepo,
   branchNameFromIssue,
@@ -275,14 +276,9 @@ export function cleanupStaleAssignments(): number {
 
     if (staleIssues.length === 0) return 0
 
-    const now = new Date().toISOString()
     for (const issue of staleIssues) {
       // Move back to claude lane (re-queue) and clear assignment
-      db.prepare(
-        `UPDATE items
-         SET assigned_to = '', stage = 'claude', updated = @now
-         WHERE id = @id`,
-      ).run({ id: issue.id, now })
+      moveItem(issue.id, { stage: 'claude', assigned_to: '' })
 
       addNote(
         issue.id,
@@ -389,6 +385,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
     setStatus({ state: 'idle' })
     return currentStatus
   }
+  persistItem(issue.id)
 
   emitBoardChanged()
 
@@ -430,9 +427,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
     logger.error('claude', 'runner.no_git', errMsg, { issueId: issue.id, scope })
     addNote(issue.id, 'error', errMsg)
     // Unclaim the item so it goes back to the claude lane for retry
-    db.prepare(
-      `UPDATE items SET assigned_to = '', stage = 'claude', updated = @now WHERE id = @id`,
-    ).run({ id: issue.id, now })
+    moveItem(issue.id, { stage: 'claude', assigned_to: '' })
     emitBoardChanged()
     setStatus({ state: 'error', issueId: issue.id, issueTitle: issue.title, error: errMsg })
     return currentStatus
@@ -482,9 +477,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
     )
     addNote(issue.id, 'error', `Worktree creation failed: ${errMsg}. Item returned to Claude lane for retry.`)
     // Unclaim the item so it goes back to the claude lane for retry
-    db.prepare(
-      `UPDATE items SET assigned_to = '', stage = 'claude', updated = @now WHERE id = @id`,
-    ).run({ id: issue.id, now })
+    moveItem(issue.id, { stage: 'claude', assigned_to: '' })
     emitBoardChanged()
     setStatus({ state: 'error', issueId: issue.id, issueTitle: issue.title, error: `Worktree failed: ${errMsg}` })
     return currentStatus
@@ -698,8 +691,6 @@ PRIORITY: ${issue.priority}`
         },
       )
 
-      const doneNow = new Date().toISOString()
-
       if (branchName && countBranchCommits(repoRoot, branchName, baseBranch) === 0) {
         // Exit 0 but nothing committed — nothing to review. Clean up and
         // park the item in "build" (not "claude": would auto-retrigger in a loop).
@@ -716,9 +707,7 @@ PRIORITY: ${issue.priority}`
         } catch {
           /* cleanup best-effort */
         }
-        db.prepare(
-          `UPDATE items SET stage = 'build', assigned_to = '', updated = @now WHERE id = @id`,
-        ).run({ id: issue.id, now: doneNow })
+        moveItem(issue.id, { stage: 'build', assigned_to: '' })
       } else if (branchName) {
         // Branch workflow: move to review lane
         const commitCount = countBranchCommits(repoRoot, branchName, baseBranch)
@@ -733,32 +722,12 @@ PRIORITY: ${issue.priority}`
           `UPDATE branch_reviews SET commit_count = @count WHERE branch_name = @branch`,
         ).run({ count: commitCount, branch: branchName })
 
-        const maxPos = db
-          .prepare(
-            "SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'review'",
-          )
-          .get() as { max: number }
-
-        db.prepare(
-          `UPDATE items
-           SET stage = 'review', assigned_to = '', position = @position, updated = @now
-           WHERE id = @id`,
-        ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
+        moveItem(issue.id, { stage: 'review', assigned_to: '', toEnd: true })
       } else {
         // No branch: move directly to done
         addNote(issue.id, 'commit', summary)
 
-        const maxPos = db
-          .prepare(
-            "SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'",
-          )
-          .get() as { max: number }
-
-        db.prepare(
-          `UPDATE items
-           SET stage = 'done', assigned_to = '', position = @position, updated = @now
-           WHERE id = @id`,
-        ).run({ id: issue.id, position: maxPos.max + 1, now: doneNow })
+        moveItem(issue.id, { stage: 'done', assigned_to: '', toEnd: true })
       }
 
       const finalCommits = branchName ? countBranchCommits(repoRoot, branchName, baseBranch) : 0
@@ -811,14 +780,7 @@ PRIORITY: ${issue.priority}`
             `UPDATE branch_reviews SET commit_count = @count WHERE branch_name = @branch`,
           ).run({ count: commitCount, branch: branchName })
 
-          const maxPos = db
-            .prepare(
-              "SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'review'",
-            )
-            .get() as { max: number }
-          db.prepare(
-            `UPDATE items SET stage = 'review', assigned_to = '', position = @position, updated = @now WHERE id = @id`,
-          ).run({ id: issue.id, position: maxPos.max + 1, now: new Date().toISOString() })
+          moveItem(issue.id, { stage: 'review', assigned_to: '', toEnd: true })
         } else {
           // No commits — clean up and leave as error
           addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)

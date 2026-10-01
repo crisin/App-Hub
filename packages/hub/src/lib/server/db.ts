@@ -303,6 +303,14 @@ function migrate(db: Database.Database) {
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_items_phase ON items(phase_id)')
 
+  // When the item was last written to its board file (.apphub/items/<id>.md).
+  // NULL = never persisted: such rows are exported on sync, never deleted.
+  try {
+    db.exec('ALTER TABLE items ADD COLUMN persisted_at TEXT DEFAULT NULL')
+  } catch {
+    // column already exists
+  }
+
   // --- Item dependencies table ---
   db.exec(`
     CREATE TABLE IF NOT EXISTS item_dependencies (

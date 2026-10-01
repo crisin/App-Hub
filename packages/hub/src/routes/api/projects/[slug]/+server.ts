@@ -63,7 +63,18 @@ export const DELETE: RequestHandler = async ({ params }) => {
     unregisterProjectPath(project.path);
   }
 
-  db.prepare('DELETE FROM projects WHERE slug = ?').run(params.slug);
+  // Drop the project's board from the index too. Its board files went with the
+  // directory (managed) or stay in the unregistered repo (external).
+  db.transaction(() => {
+    const ids = db.prepare('SELECT id FROM items WHERE project_slug = ?').all(params.slug) as { id: string }[];
+    for (const { id } of ids) {
+      db.prepare('DELETE FROM item_dependencies WHERE item_id = ? OR depends_on_id = ?').run(id, id);
+      db.prepare('DELETE FROM claude_notes WHERE issue_id = ?').run(id);
+    }
+    db.prepare('DELETE FROM items WHERE project_slug = ?').run(params.slug);
+    db.prepare('DELETE FROM phases WHERE project_slug = ?').run(params.slug);
+    db.prepare('DELETE FROM projects WHERE slug = ?').run(params.slug);
+  })();
 
   logger.info('project', 'project.deleted', `Removed project "${project.name}" (${params.slug}, ${location})`, {
     slug: params.slug,

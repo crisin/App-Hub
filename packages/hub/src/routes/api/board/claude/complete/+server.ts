@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import type { DbItemRow } from '$lib/server/db'
 import { logger } from '$lib/server/logger'
+import { moveItem } from '$lib/server/data'
 
 /** POST /api/board/claude/complete — mark an issue as done */
 export const POST: RequestHandler = async ({ request }) => {
@@ -13,24 +14,8 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   const db = getDb()
-  const now = new Date().toISOString()
 
-  // Get next position in done stage
-  const maxPos = db
-    .prepare("SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'")
-    .get() as { max: number }
-
-  const result = db
-    .prepare(
-      `
-    UPDATE items
-    SET stage = 'done', assigned_to = '', position = @position, updated = @now
-    WHERE id = @id
-  `,
-    )
-    .run({ id, position: maxPos.max + 1, now })
-
-  if (result.changes === 0) {
+  if (!moveItem(id, { stage: 'done', assigned_to: '', toEnd: true })) {
     return json({ ok: false, error: 'Issue not found' }, { status: 404 })
   }
 

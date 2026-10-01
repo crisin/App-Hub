@@ -9,6 +9,7 @@ import type { DbItemRow, DbPhaseRow, DbNoteRow, DbAttachmentRow, DbDependencyRow
 import { randomUUID } from 'node:crypto'
 import type { Item, ItemStage, Phase } from '@apphub/shared'
 import { ITEM_STAGES, DEFAULT_PHASES } from '@apphub/shared'
+import { persistItem, removeItemFile, persistPhases, hasPhasesFile } from './board-files.js'
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -360,6 +361,7 @@ export function createItem(data: {
     updated: now,
   })
 
+  persistItem(id)
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow
   return parseItemRow(item)
 }
@@ -423,6 +425,12 @@ export function updateItem(
 
   db.prepare(`UPDATE items SET ${setClauses.join(', ')} WHERE id = @id`).run(values)
 
+  // Moved to another project → its file moves to that project's repo
+  if (typeof updates.project_slug === 'string' && updates.project_slug !== existing.project_slug) {
+    removeItemFile(id, existing.project_slug)
+  }
+  persistItem(id)
+
   const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow
   return parseItemRow(updated)
 }
@@ -432,13 +440,23 @@ export function updateItem(
  */
 export function deleteItem(id: string): boolean {
   const db = getDb()
-  const existing = db.prepare('SELECT id FROM items WHERE id = ?').get(id)
+  const existing = db.prepare('SELECT id, project_slug FROM items WHERE id = ?').get(id) as
+    | Pick<DbItemRow, 'id' | 'project_slug'>
+    | undefined
   if (!existing) return false
+
+  // Items that pointed at this one lose a dependency — their files change too
+  const dependents = db
+    .prepare('SELECT DISTINCT item_id FROM item_dependencies WHERE depends_on_id = ?')
+    .all(id) as { item_id: string }[]
 
   db.prepare('DELETE FROM item_dependencies WHERE item_id = ? OR depends_on_id = ?').run(id, id)
   db.prepare('DELETE FROM claude_notes WHERE issue_id = ?').run(id)
   db.prepare('DELETE FROM issue_attachments WHERE issue_id = ?').run(id)
   db.prepare('DELETE FROM items WHERE id = ?').run(id)
+
+  removeItemFile(id, existing.project_slug)
+  for (const d of dependents) persistItem(d.item_id)
   return true
 }
 
@@ -457,6 +475,64 @@ export function reorderItems(moves: { id: string; stage: string; position: numbe
     }
   })
   txn()
+  for (const move of moves) persistItem(move.id)
+}
+
+/**
+ * Move an item to a stage and/or change its runtime assignment — the one
+ * write path for runner and review-lane transitions. `toEnd` appends it to
+ * the target stage. Returns false if the item does not exist.
+ */
+export function moveItem(
+  id: string,
+  change: { stage?: ItemStage; assigned_to?: string; toEnd?: boolean },
+): boolean {
+  const db = getDb()
+  const sets: string[] = ['updated = @updated']
+  const values: Record<string, unknown> = { id, updated: new Date().toISOString() }
+  if (change.stage) {
+    sets.push('stage = @stage')
+    values.stage = change.stage
+    if (change.toEnd) {
+      sets.push('position = @position')
+      values.position = getNextPosition('items', 'stage', change.stage)
+    }
+  }
+  if (change.assigned_to !== undefined) {
+    sets.push('assigned_to = @assigned_to')
+    values.assigned_to = change.assigned_to
+  }
+  const result = db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = @id`).run(values)
+  if (result.changes === 0) return false
+  persistItem(id)
+  return true
+}
+
+/**
+ * Add a dependency: `itemId` is blocked by / relates to `dependsOnId`.
+ * Returns the new row id. Validation (existence, cycles) is the caller's job.
+ */
+export function addDependency(itemId: string, dependsOnId: string, type: 'blocks' | 'relates_to'): string {
+  const id = `dep-${randomUUID().slice(0, 8)}`
+  getDb()
+    .prepare(
+      `INSERT INTO item_dependencies (id, item_id, depends_on_id, dependency_type, created)
+       VALUES (@id, @item_id, @depends_on_id, @dependency_type, @created)`,
+    )
+    .run({ id, item_id: itemId, depends_on_id: dependsOnId, dependency_type: type, created: new Date().toISOString() })
+  persistItem(itemId)
+  return id
+}
+
+/** Remove a dependency of `itemId`, by row id or by target. Returns true if one was removed. */
+export function removeDependency(itemId: string, by: { dependencyId?: string; dependsOnId?: string }): boolean {
+  const db = getDb()
+  const result = by.dependencyId
+    ? db.prepare('DELETE FROM item_dependencies WHERE id = ? AND item_id = ?').run(by.dependencyId, itemId)
+    : db.prepare('DELETE FROM item_dependencies WHERE item_id = ? AND depends_on_id = ?').run(itemId, by.dependsOnId)
+  if (result.changes === 0) return false
+  persistItem(itemId)
+  return true
 }
 
 /**
@@ -535,6 +611,7 @@ export function addClaudeNote(
     `INSERT INTO claude_notes (id, issue_id, type, message, created)
      VALUES (@id, @issue_id, @type, @message, @created)`,
   ).run({ id, issue_id: issueId, type, message: message.slice(0, 200), created: now })
+  persistItem(issueId)
 }
 
 // ── Project queries ─────────────────────────────────────────────────
@@ -675,6 +752,7 @@ export function createPhase(data: {
     updated: now,
   })
 
+  persistPhases(data.project_slug)
   return db.prepare('SELECT * FROM phases WHERE id = ?').get(id) as Phase
 }
 
@@ -705,6 +783,7 @@ export function updatePhase(
   values.updated = new Date().toISOString()
 
   db.prepare(`UPDATE phases SET ${setClauses.join(', ')} WHERE id = @id`).run(values)
+  persistPhases(existing.project_slug)
   return db.prepare('SELECT * FROM phases WHERE id = ?').get(id) as Phase
 }
 
@@ -713,14 +792,19 @@ export function updatePhase(
  */
 export function deletePhase(id: string): boolean {
   const db = getDb()
-  const existing = db.prepare('SELECT id FROM phases WHERE id = ?').get(id)
+  const existing = db.prepare('SELECT id, project_slug FROM phases WHERE id = ?').get(id) as
+    | Pick<DbPhaseRow, 'id' | 'project_slug'>
+    | undefined
   if (!existing) return false
 
+  const affected = db.prepare('SELECT id FROM items WHERE phase_id = ?').all(id) as { id: string }[]
   db.prepare('UPDATE items SET phase_id = NULL, updated = ? WHERE phase_id = ?').run(
     new Date().toISOString(),
     id,
   )
   db.prepare('DELETE FROM phases WHERE id = ?').run(id)
+  for (const item of affected) persistItem(item.id)
+  persistPhases(existing.project_slug)
   return true
 }
 
@@ -737,6 +821,14 @@ export function reorderPhases(moves: { id: string; position: number }[]) {
     }
   })
   txn()
+  const slugs = new Set<string>()
+  for (const move of moves) {
+    const row = db.prepare('SELECT project_slug FROM phases WHERE id = ?').get(move.id) as
+      | { project_slug: string }
+      | undefined
+    if (row) slugs.add(row.project_slug)
+  }
+  for (const slug of slugs) persistPhases(slug)
 }
 
 /**
@@ -747,7 +839,7 @@ export function seedDefaultPhases(projectSlug: string) {
   const existing = db
     .prepare('SELECT COUNT(*) as c FROM phases WHERE project_slug = ?')
     .get(projectSlug) as { c: number }
-  if (existing.c > 0) return
+  if (existing.c > 0 || hasPhasesFile(projectSlug)) return
 
   const now = new Date().toISOString()
   const stmt = db.prepare(
@@ -768,4 +860,5 @@ export function seedDefaultPhases(projectSlug: string) {
     }
   })
   txn()
+  persistPhases(projectSlug)
 }

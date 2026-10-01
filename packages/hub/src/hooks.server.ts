@@ -1,6 +1,20 @@
 import type { Handle } from '@sveltejs/kit'
 import { corsHeaders } from '$lib/server/auth'
 import { cleanupStaleAssignments } from '$lib/server/claude-runner'
+import { syncProjects } from '$lib/server/scanner'
+import { importBoards } from '$lib/server/board-files'
+
+// On server startup: index projects, then load their board files (.apphub/items) —
+// the markdown is the source of truth, SQLite only the index
+try {
+  syncProjects()
+  const board = importBoards()
+  console.log(
+    `[startup] Board files: ${board.imported} imported, ${board.persisted} rewritten, ${board.removed} removed, ${board.exported} exported`,
+  )
+} catch (err) {
+  console.error('[startup] Project/board sync failed:', err)
+}
 
 // On server startup: reset any issues stuck with claude-runner assignment from a previous crash
 const staleCount = cleanupStaleAssignments()

@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import type { DbItemRow } from '$lib/server/db'
 import { logger } from '$lib/server/logger'
+import { persistItem } from '$lib/server/board-files'
 
 /** POST /api/board/claude/claim — claim an item from the Claude stage */
 export const POST: RequestHandler = async ({ request }) => {
@@ -34,6 +35,7 @@ export const POST: RequestHandler = async ({ request }) => {
     )
   }
 
+  persistItem(id)
   const issue = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItemRow
   issue.labels = JSON.parse(issue.labels || '[]')
 

@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import type { DbItemRow } from '$lib/server/db'
-import { randomUUID } from 'node:crypto'
+import { addDependency, removeDependency } from '$lib/server/data'
 import { DEPENDENCY_TYPES } from '@apphub/shared'
 import type { DependencyType } from '@apphub/shared'
 import { emitBoardChanged } from '$lib/server/claude-runner'
@@ -85,19 +85,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
     return json({ ok: false, error: 'Circular dependency detected' }, { status: 409 })
   }
 
-  const id = `dep-${randomUUID().slice(0, 8)}`
-  const now = new Date().toISOString()
-
-  db.prepare(
-    `INSERT INTO item_dependencies (id, item_id, depends_on_id, dependency_type, created)
-     VALUES (@id, @item_id, @depends_on_id, @dependency_type, @created)`,
-  ).run({
-    id,
-    item_id: params.id,
-    depends_on_id,
-    dependency_type: type,
-    created: now,
-  })
+  const id = addDependency(params.id, depends_on_id, type)
 
   logger.info('board', 'dependency.created', `"${params.id}" now depends on "${target.title}"`, {
     itemId: params.id,
@@ -116,23 +104,11 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
   const body = await request.json()
   const { dependency_id, depends_on_id } = body
 
-  const db = getDb()
-  let result
-
-  if (dependency_id) {
-    result = db.prepare('DELETE FROM item_dependencies WHERE id = ? AND item_id = ?').run(
-      dependency_id,
-      params.id,
-    )
-  } else if (depends_on_id) {
-    result = db
-      .prepare('DELETE FROM item_dependencies WHERE item_id = ? AND depends_on_id = ?')
-      .run(params.id, depends_on_id)
-  } else {
+  if (!dependency_id && !depends_on_id) {
     return json({ ok: false, error: 'dependency_id or depends_on_id required' }, { status: 400 })
   }
 
-  if (result.changes === 0) {
+  if (!removeDependency(params.id, { dependencyId: dependency_id, dependsOnId: depends_on_id })) {
     return json({ ok: false, error: 'Dependency not found' }, { status: 404 })
   }
 

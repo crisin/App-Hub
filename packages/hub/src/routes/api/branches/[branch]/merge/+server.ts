@@ -9,6 +9,7 @@ import {
   getCurrentBranch,
 } from '$lib/server/git-worktree'
 import { logger } from '$lib/server/logger'
+import { moveItem } from '$lib/server/data'
 import { resolveProjectScope } from '$lib/server/scanner'
 import { HUB_ROOT } from '$lib/server/config'
 
@@ -86,13 +87,7 @@ export const POST: RequestHandler = async ({ params }) => {
   ).run({ now, branch: branchName })
 
   // Move issue to done
-  const maxPos = db
-    .prepare("SELECT COALESCE(MAX(position), -1) as max FROM items WHERE stage = 'done'")
-    .get() as { max: number }
-
-  db.prepare(
-    `UPDATE items SET stage = 'done', position = @position, updated = @now WHERE id = @id`,
-  ).run({ position: maxPos.max + 1, now, id: review.issue_id })
+  moveItem(review.issue_id, { stage: 'done', toEnd: true })
 
   logger.info('claude', 'branch.merged', `Merged branch ${branchName} into ${review.base_branch}`, {
     branch: branchName,
