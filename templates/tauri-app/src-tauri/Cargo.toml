@@ -1,0 +1,20 @@
+[package]
+name = "__APP_SLUG__"
+description = "Tauri shell: windows, commands, plugins — adapts crates/* to the UI"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+# fixed lib name so main.rs never depends on the project slug
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+app-core = { path = "../crates/core" }

@@ -1,0 +1,28 @@
+{
+  "name": "__APP_SLUG__",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "icons": "tauri icon app-icon.png",
+    "check": "svelte-check --tsconfig ./tsconfig.json && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
+    "test": "cargo test --workspace",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6",
+    "@tauri-apps/cli": "^2",
+    "@tsconfig/svelte": "^5",
+    "svelte": "^5",
+    "svelte-check": "^4",
+    "typescript": "^5",
+    "vite": "^7"
+  }
+}

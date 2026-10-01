@@ -1,0 +1,6 @@
+{
+  "name": "Tauri 2 App",
+  "description": "Desktop app for Windows + macOS: Tauri 2 shell, Svelte 5 UI, Cargo workspace with Tauri-free core crates",
+  "tags": ["desktop", "tauri", "rust", "svelte", "windows", "macos"],
+  "postCreate": "node setup.mjs"
+}
