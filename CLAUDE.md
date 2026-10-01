@@ -311,3 +311,30 @@ See `ARCHITECTURE-V2.md` for the full roadmap. Current priorities:
 - Keep the CLI client thin — all logic lives in the hub API, CLI just calls it
 - When adding new features, update both the web UI and CLI where applicable
 - Always rebuild shared package after changing types: `npm run build --workspace=@apphub/shared`
+
+## Git & Logbook
+
+The git history is this project's logbook. Rule since 2026-10-01: **every change lands as a
+commit with a detailed message** — someone who reads only `git log` must be able to follow what
+happened, why, and how it was checked.
+
+```
+<type>(<scope>): <what changed — imperative, max 72 chars>
+
+Why:       the problem or motivation — what was wrong or missing, how it showed up
+What:      the change itself, key decisions, rejected alternatives
+Verified:  how it was checked (typecheck, build, API call, e2e board run) —
+           or "not verified" plus the reason
+Follow-up: open ends, known limitations, next steps (omit if none)
+```
+
+- Types: `feat` `fix` `refactor` `docs` `chore` `test` `perf` `build` `ci`. Scopes: `hub` `cli`
+  `shared` `runner` `board` `agents` `templates` `git` `docs`, or a module name.
+  This replaces the old catch-all `vibe:` prefix.
+- One logical change per commit — no "wip" or "misc" commits.
+- Read the logbook: `npm run logbook` (last 15 entries with bodies; `npm run logbook -- -n 50`,
+  `-- --since=2026-10-01` or `-- <path>` to narrow it down).
+- `git config commit.template .gitmessage` puts the skeleton into the editor.
+- Board-runner commits follow the same format — the runner prompt tells the coding agent so.
+  Aider writes its own commit messages; review them in the review lane.
+- Never rewrite pushed history (no force-push, no amending pushed commits).
