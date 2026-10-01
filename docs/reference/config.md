@@ -54,5 +54,6 @@ stored in the local database.
 
 - **macOS:** `./scripts/install-service.sh` (launchd login item, runs `scripts/start.mjs`),
   `./scripts/uninstall-service.sh`.
-- **Windows:** not automated yet — `npm run build` once, then `npm run start` (also
-  `scripts/start.mjs`). A Task Scheduler entry is on the [roadmap](../roadmap.md).
+- **Windows:** `npm run build`, then `node scripts/autostart-windows.mjs install` — a per-user
+  Task Scheduler task (no admin) that runs `scripts/start.mjs` headless at logon.
+  `… uninstall` / `… status`; `--dry-run` prints the schtasks call.

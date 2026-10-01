@@ -48,7 +48,7 @@ App-Hub/
 ├── docs/                         ← documentation = in-app help (start/ howto/ concepts/ reference/ roadmap.md history/)
 ├── agents/                       ← agent definitions (critic, advocate, judge, summarizer, ui-drafter)
 ├── templates/                    ← tauri-app, sveltekit-web, nextjs-fullstack, expo-app, kmp-app
-├── scripts/                      ← start.mjs (production entry), logbook.mjs, install/uninstall-service.sh (macOS)
+├── scripts/                      ← start.mjs (production entry), logbook.mjs, autostart-windows.mjs, install/uninstall-service.sh (macOS)
 ├── projects/                     ← scaffolded projects, each its own repo (gitignored)
 ├── logs/                         ← runs/ and agents/ output (gitignored)
 ├── apphub.local.json             ← machine-local: registered external project paths (gitignored)
@@ -129,11 +129,12 @@ files with write-through + sync, runner with worktree isolation (Claude Code def
 label), review lane with logbook merge commits, SSE live output, agent layer (Ollama /
 OpenAI-compatible / Anthropic) with debate workflow (label `debate`), project registry for repos
 outside `projects/`, five templates incl. `tauri-app`, help panel (`?` / F1) rendering `docs/`,
-architecture graph (2D + 3D), dogfooding (the hub's roadmap is on its own board), macOS service.
+architecture graph (2D + 3D), dogfooding (the hub's roadmap is on its own board), autostart
+(macOS launchd service, Windows Task Scheduler script).
 
 Next: visualization pillar, then the node planner (DAG of items executed sequentially and in
 parallel worktrees), runner concurrency, agent Baukasten (workflows as data, stage hooks, cron,
-MCP server), Windows autostart. Details and order: `docs/roadmap.md`.
+MCP server). Details and order: `docs/roadmap.md`.
 
 Gotchas: `npm run dev` caches the runner module graph — restart after changing
 `claude-runner.ts` / `coder-backends.ts`. Local inference must be streamed (undici's 5-min

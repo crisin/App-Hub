@@ -76,7 +76,7 @@ Prerequisite for parallel execution in the node planner.
 
 ## 6 · Platform and DX
 
-- Windows autostart (Task Scheduler entry running `scripts/start.mjs`).
+- Windows autostart: script ready (`scripts/autostart-windows.mjs`), verify on a real logon.
 - File watcher: re-index `.apphub.md` / `.apphub/` on change instead of manual Sync.
 - Attachments into the repo (`.apphub/attachments/`), so they travel too.
 - Review-lane merges inside a temporary worktree instead of checking out the base branch in
