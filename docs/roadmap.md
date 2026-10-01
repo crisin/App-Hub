@@ -86,8 +86,9 @@ Prerequisite for parallel execution in the node planner.
 
 ## 7 · Projects on the hub
 
-- **yAPPA** (self-hosted gaming voice chat, Tauri + Rust + LiveKit) — the first external
-  project through the full pipeline (spike S0).
+- **yAPPA** (self-hosted gaming voice chat, Tauri + Rust + LiveKit) — `projects/yappa`, the
+  first external project through the full pipeline: spike S0 passed on 2026-10-02 (skeleton
+  built by Claude Code in a worktree, reviewed, merged). Next: S1 PoC, S5 UI-stack ADR.
 - **lyrics-helper** — register the existing repo so it gets its work items from the hub.
 
 ## Later, maybe

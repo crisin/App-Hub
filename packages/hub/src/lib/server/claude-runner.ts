@@ -142,19 +142,23 @@ function addNote(issueId: string, type: 'progress' | 'commit' | 'error' | 'info'
  *   { type: "result", result: "...", ... }
  * Returns null to skip events that don't need display.
  */
-function formatStreamEvent(event: any): string | null {
+export function formatStreamEvent(event: any): string | null {
   if (!event || !event.type) return null
 
   switch (event.type) {
     case 'assistant': {
-      // Initial assistant message — extract text blocks
+      // Assistant turn — its text, plus one "▶ Tool target" line per tool call,
+      // so the live output shows what the agent is doing, not only what it says
       const content = event.message?.content
       if (Array.isArray(content)) {
-        const texts = content
-          .filter((c: any) => c.type === 'text')
-          .map((c: any) => c.text)
-          .join('\n')
-        if (texts.trim()) return texts.trim()
+        const lines = content
+          .map((c: any) => {
+            if (c.type === 'text') return typeof c.text === 'string' ? c.text.trim() : ''
+            if (c.type === 'tool_use') return describeToolUse(c.name, c.input)
+            return ''
+          })
+          .filter(Boolean)
+        if (lines.length > 0) return lines.join('\n')
       }
       return null
     }
@@ -218,6 +222,15 @@ function formatStreamEvent(event: any): string | null {
     default:
       return null
   }
+}
+
+/** One line for a tool call: name plus its most telling argument (file, command, pattern) */
+function describeToolUse(name: unknown, input: any): string {
+  const tool = typeof name === 'string' ? name : 'tool'
+  const target =
+    input?.file_path ?? input?.path ?? input?.command ?? input?.pattern ?? input?.url ?? input?.description ?? ''
+  const text = String(target).replace(/\s+/g, ' ').trim()
+  return text ? `▶ ${tool} ${text.length > 140 ? `${text.slice(0, 140)}…` : text}` : `▶ ${tool}`
 }
 
 function pushOutput(ch: OutputLine['ch'], text: string) {
@@ -464,8 +477,6 @@ export function triggerRunner(): ClaudeRunnerStatus {
       created: now,
     })
 
-    pushOutput('system', `Branch: ${branchName}`)
-    pushOutput('system', `Worktree: ${worktreePath}`)
   } catch (err) {
     // Worktree creation failed — do NOT fall back to direct-write (would contaminate main branch)
     const errMsg = err instanceof Error ? err.message : String(err)
@@ -547,6 +558,7 @@ PRIORITY: ${issue.priority}`
   pushOutput('system', `Log file: ${taskLogPath}`)
   pushOutput('system', `Scope: ${contextName} (${scope})`)
   pushOutput('system', `Working directory: ${workDir}`)
+  if (branchName) pushOutput('system', `Branch: ${branchName} (from ${baseBranch})`)
   pushOutput('system', `Priority: ${issue.priority}`)
   if (issue.description) pushOutput('system', `Description: ${issue.description.slice(0, 200)}`)
   pushOutput('system', '─'.repeat(60))
