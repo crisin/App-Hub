@@ -9,8 +9,11 @@ build/
 
 # Data (SQLite DB + attachments — regenerated from markdown)
 packages/hub/data/
+/data/
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Environment
 .env

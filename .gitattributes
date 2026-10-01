@@ -1,0 +1,30 @@
+# Line endings: LF in the repository AND in every checkout, on Windows and macOS.
+# Without this, core.autocrlf (true in Git for Windows' system config, unset on
+# macOS) decides per machine — files flapped between CRLF and LF and whole-file
+# rewrites showed up in worktree diffs and review lanes.
+* text=auto eol=lf
+
+# Windows-native scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary — never touch
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.icns  binary
+*.jar   binary
+*.zip   binary
+*.pdf   binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.db    binary
