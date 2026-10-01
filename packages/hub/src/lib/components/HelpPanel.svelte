@@ -174,6 +174,7 @@
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
       <article class="doc-body" bind:this={articleEl} onclick={onArticleClick}>
         <div class="doc-crumb">{page.section} · <code>docs/{page.path}</code></div>
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -- HTML rendered server-side from the repo's own docs/, not user input -->
         {@html page.html}
       </article>
     {:else}
