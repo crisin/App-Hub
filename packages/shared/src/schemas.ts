@@ -61,6 +61,8 @@ template: "${template}"
 tags: []
 created: "${now}"
 updated: "${now}"
+# Short summary for coding agents — added to every board-task prompt
+context: ""
 ---
 
 # ${name}
@@ -75,49 +77,65 @@ updated: "${now}"
 `
 }
 
-/** Default CLAUDE.md for spawned projects */
-export function defaultClaudeMd(name: string, slug: string, template: string): string {
-  return `# ${name}
+/**
+ * App Hub section of a spawned project's CLAUDE.md. Appended to a template's
+ * own CLAUDE.md, or wrapped by defaultClaudeMd() when the template has none.
+ */
+export function hubClaudeSection(slug: string): string {
+  return `## App Hub
 
-## What This Project Is
+This repo is managed by App Hub (dashboard: http://localhost:5174/project/${slug}).
 
-${name} is a project scaffolded by App Hub using the \`${template}\` template.
+- \`.apphub.md\` — project metadata. Its \`context\` field is added to every coding-agent
+  prompt: keep it a short, current summary of layers, modules and commands.
+- Work items live on the hub board. Coding tasks run in git worktrees under \`.worktrees/\`
+  (excluded locally) and come back through the hub's review lane — never push or merge
+  from a task.
+- Dev API for prototyping without an own auth setup: \`POST http://localhost:5174/api/dev/auth\`
+  (login as a dev user), \`GET /api/dev/auth\` (verify a Bearer token), \`/api/dev/users\`.
 
-## Hub Integration
+## Git & Logbook
 
-This project is managed by App Hub. Key files:
-- \`.apphub.md\` — Project metadata (name, status, tags). Edited by the hub; avoid manual changes to frontmatter.
-- \`TASKS.md\` — Task tracking. Add tasks here or via the hub dashboard/CLI.
-- \`docs/\` — Project documentation.
-
-The hub dashboard is at \`http://localhost:5174/project/${slug}\` (while running).
-
-## Dev API
-
-App Hub provides mock API endpoints for prototyping:
+The git history is this project's logbook. Every change is a commit with a detailed message:
 
 \`\`\`
-POST http://localhost:5174/api/dev/auth     — Mock login (any email/password)
-GET  http://localhost:5174/api/dev/auth     — Verify token (Authorization: Bearer <token>)
-GET  http://localhost:5174/api/dev/users    — List dev users
-POST http://localhost:5174/api/dev/users    — Create dev user
+<type>(<scope>): <what changed — imperative, max 72 chars>
+
+Why:       the problem or motivation
+What:      the change, key decisions, rejected alternatives
+Verified:  how it was checked — or "not verified" plus the reason
+Follow-up: open ends (omit if none)
 \`\`\`
 
-## Commands
-
-\`\`\`bash
-# Check project status
-npx apphub status ${slug}
-
-# Add a task
-npx apphub task add "Task description" -p ${slug}
-
-# List tasks
-npx apphub task list -p ${slug}
-
-# Mark a task done
-npx apphub task done <task-id> -p ${slug}
-\`\`\`
+Types: feat fix refactor docs chore test perf build ci. One logical change per commit.
 `
 }
 
+/** Default CLAUDE.md for spawned projects whose template ships none */
+export function defaultClaudeMd(name: string, slug: string, template: string): string {
+  return `# ${name}
+
+${name} was scaffolded by App Hub from the \`${template}\` template.
+
+${hubClaudeSection(slug)}`
+}
+
+/** Fallback .gitignore for templates that ship none — keeps installs/builds out of commit 1 */
+export const DEFAULT_GITIGNORE = `node_modules/
+dist/
+build/
+.svelte-kit/
+target/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+`
+
+/** Line-ending policy for new repos — LF everywhere from commit 1 (Windows + macOS) */
+export const DEFAULT_GITATTRIBUTES = `* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+`

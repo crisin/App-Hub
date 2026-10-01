@@ -25,7 +25,8 @@ export interface Template {
   description: string
   source: string // git repo URL or local path
   tags: string[]
-  postCreate?: string // shell command to run after cloning
+  /** Command(s) run in the new project after copying — keep them cross-platform (`node setup.mjs`) */
+  postCreate?: string | string[]
 }
 
 /**

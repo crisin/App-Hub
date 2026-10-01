@@ -36,5 +36,6 @@ export const newCommand = new Command('new')
 
     console.log(`  ${chalk.dim('Slug:')}  ${result.slug}`)
     console.log(`  ${chalk.dim('Path:')}  ${result.path}`)
+    for (const w of result.warnings ?? []) console.log(chalk.yellow(`  ⚠ ${w}`))
     console.log(`\n  ${chalk.dim('cd')} ${result.path}`)
   })

@@ -50,7 +50,7 @@
           {#if template.postCreate}
             <div class="post-create">
               <span class="label">Post-create:</span>
-              <code>{template.postCreate}</code>
+              <code>{[template.postCreate].flat().join(' && ')}</code>
             </div>
           {/if}
           <div class="card-footer">
