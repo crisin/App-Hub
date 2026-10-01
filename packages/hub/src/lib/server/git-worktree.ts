@@ -4,7 +4,7 @@
  * Each issue gets its own worktree + branch so Claude can commit freely
  * without affecting the main working directory.
  */
-import { execSync } from 'node:child_process'
+import { execSync, execFileSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
 import { execEnv } from './exec-utils.js'
@@ -47,20 +47,80 @@ export function branchNameFromIssue(issueId: string, title: string): string {
   return `claude/${shortId}-${slug}`
 }
 
-/** node_modules locations to mirror into a worktree (root + workspace packages) */
-function nodeModulesPaths(root: string): string[] {
-  const rels = ['node_modules']
-  const pkgs = path.join(root, 'packages')
-  if (fs.existsSync(pkgs)) {
-    try {
-      for (const entry of fs.readdirSync(pkgs, { withFileTypes: true })) {
-        if (entry.isDirectory()) rels.push(path.join('packages', entry.name, 'node_modules'))
+/**
+ * npm workspace directories (relative) declared in the root package.json.
+ * Supports exact paths and one-level globs ("apps/*", "packages/*", "crates/x").
+ */
+function workspaceDirs(root: string): string[] {
+  let patterns: string[] = []
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'))
+    const ws = Array.isArray(pkg.workspaces) ? pkg.workspaces : pkg.workspaces?.packages
+    if (Array.isArray(ws)) patterns = ws.filter((p: unknown): p is string => typeof p === 'string')
+  } catch {
+    return []
+  }
+
+  const dirs: string[] = []
+  for (const pattern of patterns) {
+    const clean = pattern.replace(/\\/g, '/').replace(/\/$/, '')
+    if (clean.endsWith('/*')) {
+      const parent = clean.slice(0, -2)
+      try {
+        for (const entry of fs.readdirSync(path.join(root, parent), { withFileTypes: true })) {
+          if (entry.isDirectory()) dirs.push(path.join(parent, entry.name))
+        }
+      } catch {
+        /* parent missing — nothing to link */
       }
-    } catch {
-      /* ignore */
+    } else if (!clean.includes('*')) {
+      dirs.push(clean)
     }
   }
-  return rels
+  return dirs
+}
+
+/** node_modules locations to mirror into a worktree (root + every npm workspace) */
+function nodeModulesPaths(root: string): string[] {
+  return ['node_modules', ...workspaceDirs(root).map((dir) => path.join(dir, 'node_modules'))]
+}
+
+/**
+ * Keep the worktree directory out of `git status` in the main checkout.
+ * Uses the repo's info/exclude (local, unversioned) so projects need no
+ * .gitignore entry for the hub's internals.
+ */
+function excludeWorktreeDir(repoRoot: string): void {
+  try {
+    const commonDir = path.resolve(repoRoot, git(repoRoot, 'rev-parse --git-common-dir'))
+    const excludeFile = path.join(commonDir, 'info', 'exclude')
+    const current = fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, 'utf-8') : ''
+    if (current.split(/\r?\n/).some((line) => line.trim() === `/${WORKTREE_DIR}/`)) return
+    fs.mkdirSync(path.dirname(excludeFile), { recursive: true })
+    const sep = current && !current.endsWith('\n') ? '\n' : ''
+    fs.appendFileSync(excludeFile, `${sep}# App Hub: coding-agent worktrees\n/${WORKTREE_DIR}/\n`)
+  } catch {
+    /* non-fatal — at worst .worktrees/ shows up as untracked */
+  }
+}
+
+/**
+ * Extra environment for a coding agent working in a worktree of repoRoot.
+ *
+ * Rust: all worktrees of a repo share one cargo target dir, so a task does
+ * not rebuild every dependency from scratch (minutes and gigabytes per task
+ * for Tauri/LiveKit-sized trees). Cargo locks the dir itself; the runner
+ * works one task at a time anyway. Deliberately NOT the main checkout's
+ * target/: on Windows a running app's .exe cannot be overwritten, so an
+ * agent build would collide with the user's own `tauri dev`. A
+ * CARGO_TARGET_DIR the user already set wins.
+ */
+export function worktreeEnv(repoRoot: string): Record<string, string> {
+  const env: Record<string, string> = {}
+  if (fs.existsSync(path.join(repoRoot, 'Cargo.toml')) && !process.env.CARGO_TARGET_DIR) {
+    env.CARGO_TARGET_DIR = path.join(repoRoot, WORKTREE_DIR, '.cargo-target')
+  }
+  return env
 }
 
 /**
@@ -107,8 +167,9 @@ function unlinkNodeModules(worktreePath: string): void {
 export function createWorktree(repoRoot: string, branchName: string): string {
   const worktreePath = path.join(repoRoot, WORKTREE_DIR, branchName.replace('/', '-'))
 
-  // Ensure parent dir exists
+  // Ensure parent dir exists and stays out of the main checkout's git status
   fs.mkdirSync(path.dirname(worktreePath), { recursive: true })
+  excludeWorktreeDir(repoRoot)
 
   // Create worktree with a new branch from HEAD
   git(repoRoot, `worktree add "${worktreePath}" -b "${branchName}"`)
@@ -206,13 +267,24 @@ export function countBranchCommits(
   }
 }
 
-/** Merge a branch into the current branch (should be on base branch) */
+/**
+ * Merge a branch into the current branch (should be on base branch).
+ * The merge commit is a logbook entry: pass the subject and body lines.
+ */
 export function mergeBranch(
   repoRoot: string,
   branchName: string,
+  message: { subject: string; body?: string[] } = { subject: `merge: ${branchName}` },
 ): { success: boolean; error?: string } {
   try {
-    git(repoRoot, `merge "${branchName}" --no-ff -m "vibe: merge ${branchName}"`)
+    // execFile with an argv array: free-text messages never pass through a shell
+    const messageArgs = [message.subject, ...(message.body ?? [])].flatMap((p) => ['-m', p])
+    execFileSync('git', ['merge', branchName, '--no-ff', ...messageArgs], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      timeout: 30000,
+      env: execEnv(),
+    })
     return { success: true }
   } catch (err) {
     // Abort the merge if it failed

@@ -19,6 +19,7 @@ import {
   removeWorktree,
   countBranchCommits,
   getCurrentBranch,
+  worktreeEnv,
 } from './git-worktree.js'
 import { getCoderBackend, backendForLabels } from './coder-backends.js'
 import { PATHS, HUB_URL } from './config.js'
@@ -519,7 +520,14 @@ PRIORITY: ${issue.priority}`
   if (branchName && backend.name === 'claude') {
     prompt += `
 - You are working in a git worktree on branch "${branchName}"
-- COMMIT your changes with git. Always prefix commit messages with "vibe:" (e.g., "vibe: add login form validation")
+- COMMIT your changes with git. The git history is the project's logbook — every commit gets a detailed message:
+    <type>(<scope>): <what changed, imperative, max 72 chars>
+    <blank line>
+    Why:       the problem or motivation
+    What:      the change, key decisions, rejected alternatives
+    Verified:  how you checked it (typecheck, build, tests) — or "not verified" and why
+    Follow-up: open ends (omit if none)
+  Types: feat fix refactor docs chore test perf build ci. Write the message to a temp file and use "git commit -F <file>" to keep the line breaks.
 - Make small, focused commits — one per logical change
 - Do NOT push, merge, or switch branches — the user will review and merge your branch`
   }
@@ -586,10 +594,14 @@ PRIORITY: ${issue.priority}`
     }
   }
 
+  // Per-repo extras for the agent (e.g. a cargo target dir shared by all worktrees)
+  const extraEnv = worktreePath ? worktreeEnv(repoRoot) : {}
+  for (const [k, v] of Object.entries(extraEnv)) pushOutput('system', `Env: ${k}=${v}`)
+
   currentProcess = spawn(plan.bin, plan.args, {
     cwd: workDir,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: plan.env,
+    env: { ...plan.env, ...extraEnv },
   })
   // Prompt via stdin where the backend wants it — avoids argv limits/quoting on Windows
   if (plan.stdinPrompt !== null) {

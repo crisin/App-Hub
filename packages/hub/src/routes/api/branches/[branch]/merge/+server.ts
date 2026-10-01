@@ -48,8 +48,17 @@ export const POST: RequestHandler = async ({ params }) => {
     }
   }
 
-  // Merge
-  const result = mergeBranch(repoRoot, branchName)
+  // Merge — the merge commit is a logbook entry tying the branch to its board item
+  const item = db
+    .prepare('SELECT title FROM items WHERE id = ?')
+    .get(review.issue_id) as { title: string } | undefined
+  const result = mergeBranch(repoRoot, branchName, {
+    subject: `merge(board): ${item?.title ?? branchName}`.slice(0, 100),
+    body: [
+      `Board item ${review.issue_id}, branch ${branchName}, ${review.commit_count} commit(s).`,
+      'Reviewed and merged through the App Hub review lane.',
+    ],
+  })
 
   if (!result.success) {
     // Restore original branch if we switched
