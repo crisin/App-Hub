@@ -782,7 +782,7 @@ PRIORITY: ${issue.priority}`
 
           moveItem(issue.id, { stage: 'review', assigned_to: '', toEnd: true })
         } else {
-          // No commits — clean up and leave as error
+          // No commits — clean up, release the claim, park in build
           addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)
           try {
             removeWorktree(repoRoot, branchName, true)
@@ -792,9 +792,11 @@ PRIORITY: ${issue.priority}`
           } catch {
             /* cleanup best-effort */
           }
+          moveItem(issue.id, { stage: 'build', assigned_to: '' })
         }
       } else {
         addNote(issue.id, 'error', `Failed with exit code ${code} after ${durationStr}`)
+        moveItem(issue.id, { stage: 'build', assigned_to: '' })
       }
 
       const failCommits = branchName ? countBranchCommits(repoRoot, branchName, baseBranch) : 0
@@ -826,6 +828,17 @@ PRIORITY: ${issue.priority}`
     cleanupListeners()
     closeTaskLog()
     cleanupPlanFiles()
+    // The agent never started: drop the empty worktree and release the claim
+    if (branchName) {
+      try {
+        removeWorktree(repoRoot, branchName, true)
+        db.prepare(`DELETE FROM branch_reviews WHERE branch_name = @branch`).run({ branch: branchName })
+      } catch {
+        /* cleanup best-effort */
+      }
+    }
+    addNote(issue.id, 'error', `Could not start ${backend.name}: ${err.message}`)
+    moveItem(issue.id, { stage: 'build', assigned_to: '' })
     console.error(`[runner] Error:`, err.message)
     logger.error('claude', 'runner.spawn_error', `Failed to spawn Claude process: ${err.message}`, {
       issueId: issue.id,
