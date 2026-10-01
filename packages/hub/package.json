@@ -25,6 +25,7 @@
     "dagre": "^0.8.5",
     "degit": "^2.8.4",
     "gray-matter": "^4.0.3",
+    "marked": "^18.0.14",
     "three": "^0.183.2"
   },
   "devDependencies": {

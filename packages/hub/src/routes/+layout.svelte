@@ -2,6 +2,7 @@
   import '../app.css'
   import { browser } from '$app/environment'
   import { page } from '$app/stores'
+  import HelpPanel from '$lib/components/HelpPanel.svelte'
 
   let { children, data } = $props()
 
@@ -23,7 +24,26 @@
   let projects = $derived(data.sidebarProjects ?? [])
   let showAllProjects = $state(false)
   let visibleProjects = $derived(showAllProjects ? projects : projects.slice(0, 6))
+
+  // Help panel: docs/ as in-app wiki — "?" or F1 toggles, Esc closes
+  let helpOpen = $state(false)
+
+  /** @param {KeyboardEvent} event */
+  function onKeydown(event) {
+    const target = /** @type {HTMLElement | null} */ (event.target)
+    const typing =
+      typeof target?.closest === 'function' &&
+      !!target.closest('input, textarea, select, [contenteditable="true"]')
+    if (event.key === 'F1' || (event.key === '?' && !typing)) {
+      event.preventDefault()
+      helpOpen = !helpOpen
+    } else if (event.key === 'Escape' && helpOpen) {
+      helpOpen = false
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="layout">
   <nav class="sidebar glass">
@@ -84,6 +104,14 @@
     {/if}
 
     <div class="nav-footer">
+      <button
+        class="help-btn"
+        class:active={helpOpen}
+        onclick={() => (helpOpen = !helpOpen)}
+        title="Help & docs (? or F1)"
+      >
+        <span>?</span> Help
+      </button>
       <span class="version">v0.1.0</span>
     </div>
   </nav>
@@ -91,6 +119,8 @@
     {@render children()}
   </main>
 </div>
+
+<HelpPanel bind:open={helpOpen} route={currentPath} />
 
 <style>
   .layout {
@@ -237,7 +267,29 @@
     padding: 0.5rem;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
+  }
+  .help-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+    font: inherit;
+  }
+  .help-btn span {
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .help-btn:hover,
+  .help-btn.active {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-subtle);
   }
   .version {
     font-size: 0.75rem;
