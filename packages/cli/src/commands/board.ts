@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { fileURLToPath } from 'node:url'
 import { hubFetch } from '../lib/api.js'
 import { withSpinner } from '../lib/withSpinner.js'
 import { ITEM_STAGES, ITEM_STAGE_LABELS } from '@apphub/shared'
@@ -177,36 +176,19 @@ claudeCmd
 
 claudeCmd
   .command('run')
-  .description('Run the Claude runner (picks up and works on Claude stage items)')
-  .option('--loop [interval]', 'Keep polling (default 60s)')
-  .option('--dry-run', 'Show what would run without executing')
-  .action(async (options: { loop?: string | boolean; dryRun?: boolean }) => {
-    const { execSync } = await import('node:child_process')
-    const { resolve, dirname } = await import('node:path')
-
-    // Resolve relative to the CLI package, not process.cwd()
-    const cliDir = dirname(fileURLToPath(import.meta.url))
-    const scriptPath = resolve(cliDir, '..', '..', '..', '..', 'scripts', 'claude-runner.sh')
-
-    const args: string[] = []
-    if (options.loop !== undefined) {
-      args.push('--loop')
-      if (typeof options.loop === 'string') args.push(options.loop)
-    }
-    if (options.dryRun) args.push('--dry-run')
-
-    console.log(chalk.magenta(`  Starting claude-runner...`))
-    console.log(chalk.dim(`  Script: ${scriptPath}`))
-    console.log()
-
-    try {
-      execSync(`"${scriptPath}" ${args.join(' ')}`, {
-        stdio: 'inherit',
-        cwd: resolve(cliDir, '..', '..', '..', '..'),
-      })
-    } catch (err: any) {
-      if (err.status !== 1) {
-        console.error(chalk.red(`  Runner exited with code ${err.status}`))
-      }
+  .description('Trigger the hub runner: it picks the next Claude-lane item and works on it in a worktree')
+  .action(async () => {
+    // The runner lives in the hub process (worktree isolation, review lane, SSE output).
+    // The old scripts/claude-runner.sh worked directly in the main checkout and is gone.
+    const status = await withSpinner('Triggering runner...', () =>
+      hubFetch('/api/board/claude/run', { method: 'POST' }),
+    )
+    if (status.state === 'running') {
+      console.log(chalk.magenta(`  Running: ${status.issueTitle} (${status.issueId})`))
+      console.log(chalk.dim('  Follow the output on the board page, or: apphub board claude list'))
+    } else if (status.state === 'error') {
+      console.log(chalk.red(`  Runner error: ${status.error}`))
+    } else {
+      console.log(chalk.dim('  Nothing to do — no unclaimed, unblocked items in the Claude lane'))
     }
   })
