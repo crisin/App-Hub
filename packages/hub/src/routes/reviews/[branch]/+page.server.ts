@@ -1,23 +1,14 @@
 import type { PageServerLoad } from './$types'
 import { getDb } from '$lib/server/db'
-import type { DbBranchReviewRow, DbProjectRow } from '$lib/server/db'
+import type { DbBranchReviewRow } from '$lib/server/db'
 import { error } from '@sveltejs/kit'
 import { getBranchDiff, getBranchDiffStat, getBranchCommits } from '$lib/server/git-worktree'
-import path from 'node:path'
-import fs from 'node:fs'
+import { resolveProjectScope } from '$lib/server/scanner'
+import { HUB_ROOT } from '$lib/server/config'
 
-const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
-
+/** Repo a review belongs to — falls back to the hub repo for unknown scopes */
 function resolveRepoRoot(scope: string): string {
-  if (!scope || scope === 'hub') return PROJECT_ROOT
-  const projectPath = path.join(PROJECT_ROOT, 'projects', scope)
-  const templatePath = path.join(PROJECT_ROOT, 'templates', scope)
-  const db = getDb()
-  const project = db.prepare('SELECT path FROM projects WHERE slug = ?').get(scope) as Pick<DbProjectRow, 'path'> | undefined
-  if (project?.path) return project.path
-  if (fs.existsSync(projectPath)) return projectPath
-  if (fs.existsSync(templatePath)) return templatePath
-  return PROJECT_ROOT
+  return resolveProjectScope(scope)?.cwd ?? HUB_ROOT
 }
 
 export const load: PageServerLoad = async ({ params }) => {

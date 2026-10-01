@@ -10,7 +10,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { getDb } from './db.js'
-import type { DbProjectRow } from './db.js'
 import { logger } from './logger.js'
 import { addClaudeNote, getUnclaimedClaudeItems, hasUnclaimedClaudeItems } from './data.js'
 import {
@@ -22,6 +21,8 @@ import {
   getCurrentBranch,
 } from './git-worktree.js'
 import { getCoderBackend, backendForLabels } from './coder-backends.js'
+import { PATHS, HUB_URL } from './config.js'
+import { resolveProjectScope } from './scanner.js'
 
 export interface ClaudeRunnerStatus {
   state: 'idle' | 'running' | 'error'
@@ -59,13 +60,8 @@ export interface RunHistoryEntry {
 let runHistory: RunHistoryEntry[] = []
 let lastActivityAt: string | null = null
 
-import { HUB_PORT } from '@apphub/shared'
-
-const HUB_URL = `http://localhost:${process.env.PORT ?? HUB_PORT}`
-const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
-
 /** Directory for persistent per-task output logs */
-const RUNS_LOG_DIR = path.join(PROJECT_ROOT, 'logs', 'runs')
+const RUNS_LOG_DIR = path.join(PATHS.logs, 'runs')
 
 /** Active log file stream for the current task */
 let currentLogStream: WriteStream | null = null
@@ -132,39 +128,6 @@ function addNote(issueId: string, type: 'progress' | 'commit' | 'error' | 'info'
   } catch {
     /* never let notes break the runner */
   }
-}
-
-/**
- * Resolve the working directory for a given project scope.
- * - 'hub' → the App Hub monorepo root
- * - project slug → projects/<slug>
- * - template slug → templates/<slug>
- */
-function resolveScope(scope: string): { cwd: string; contextName: string } | null {
-  if (!scope || scope === 'hub') {
-    return { cwd: PROJECT_ROOT, contextName: 'App Hub' }
-  }
-
-  // Check projects directory
-  const projectPath = path.join(PROJECT_ROOT, 'projects', scope)
-  if (fs.existsSync(projectPath)) {
-    return { cwd: projectPath, contextName: `project "${scope}"` }
-  }
-
-  // Check templates directory
-  const templatePath = path.join(PROJECT_ROOT, 'templates', scope)
-  if (fs.existsSync(templatePath)) {
-    return { cwd: templatePath, contextName: `template "${scope}"` }
-  }
-
-  // Check projects DB for custom paths
-  const db = getDb()
-  const project = db.prepare('SELECT path, name FROM projects WHERE slug = ?').get(scope) as Pick<DbProjectRow, 'path' | 'name'> | undefined
-  if (project?.path && fs.existsSync(project.path)) {
-    return { cwd: project.path, contextName: `project "${project.name}"` }
-  }
-
-  return null
 }
 
 /**
@@ -432,7 +395,7 @@ export function triggerRunner(): ClaudeRunnerStatus {
 
   // Resolve working directory from project_slug
   const scope = issue.project_slug || 'hub'
-  const resolved = resolveScope(scope)
+  const resolved = resolveProjectScope(scope)
 
   if (!resolved) {
     logger.error(

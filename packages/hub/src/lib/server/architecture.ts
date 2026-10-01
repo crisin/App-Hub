@@ -7,6 +7,7 @@ import path from 'node:path'
 import { parseProjectMeta } from './parser.js'
 import { listTemplates } from './templates.js'
 import { APPHUB_META_FILE } from '@apphub/shared'
+import { PATHS } from './config.js'
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -43,10 +44,10 @@ export interface ArchitectureGraph {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-const HUB_SRC = path.resolve(process.cwd(), 'src')
+const HUB_SRC = PATHS.hubSrc
 const ROUTES_DIR = path.join(HUB_SRC, 'routes')
 const LIB_SERVER_DIR = path.join(HUB_SRC, 'lib', 'server')
-const MONOREPO_ROOT = path.resolve(process.cwd(), '..', '..')
+const MONOREPO_ROOT = PATHS.root
 
 function countLines(filePath: string): number {
   try {
@@ -394,7 +395,7 @@ function discoverChildProjects(): { nodes: ArchNode[]; edges: ArchEdge[] } {
   const nodes: ArchNode[] = []
   const edges: ArchEdge[] = []
 
-  const projectsDir = path.resolve(MONOREPO_ROOT, 'projects')
+  const projectsDir = PATHS.projects
   if (!fs.existsSync(projectsDir)) return { nodes, edges }
 
   const entries = fs.readdirSync(projectsDir, { withFileTypes: true })

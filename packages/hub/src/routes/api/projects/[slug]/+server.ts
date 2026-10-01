@@ -7,6 +7,7 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import { APPHUB_META_FILE } from '@apphub/shared';
 import { logger } from '$lib/server/logger';
+import { projectLocation, unregisterProjectPath } from '$lib/server/scanner';
 
 /** GET /api/projects/:slug — get a single project */
 export const GET: RequestHandler = async ({ params }) => {
@@ -36,7 +37,13 @@ export const GET: RequestHandler = async ({ params }) => {
   });
 };
 
-/** DELETE /api/projects/:slug — delete a project */
+/**
+ * DELETE /api/projects/:slug — remove a project.
+ * What happens on disk depends on where the project lives:
+ *   hub      → refused (its path is the hub repo itself)
+ *   managed  → inside projects/: the directory is deleted
+ *   external → registered path elsewhere: unregistered only, files untouched
+ */
 export const DELETE: RequestHandler = async ({ params }) => {
   const db = getDb();
   const project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(params.slug) as DbProjectRow | undefined;
@@ -45,19 +52,26 @@ export const DELETE: RequestHandler = async ({ params }) => {
     return json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
 
-  // Remove project directory from disk
-  if (project.path && fs.existsSync(project.path)) {
-    fs.rmSync(project.path, { recursive: true, force: true });
+  const location = project.path ? projectLocation(project.path) : 'external';
+  if (location === 'hub') {
+    return json({ ok: false, error: 'The hub project cannot be deleted — its path is the hub repo' }, { status: 400 });
   }
 
-  // Remove from SQLite (tasks cascade via FK)
+  if (location === 'managed' && fs.existsSync(project.path)) {
+    fs.rmSync(project.path, { recursive: true, force: true });
+  } else if (location === 'external') {
+    unregisterProjectPath(project.path);
+  }
+
   db.prepare('DELETE FROM projects WHERE slug = ?').run(params.slug);
 
-  logger.info('project', 'project.deleted', `Deleted project "${project.name}" (${params.slug})`, {
+  logger.info('project', 'project.deleted', `Removed project "${project.name}" (${params.slug}, ${location})`, {
     slug: params.slug,
+    location,
+    filesDeleted: location === 'managed',
   });
 
-  return json({ ok: true, data: { slug: params.slug } });
+  return json({ ok: true, data: { slug: params.slug, location, filesDeleted: location === 'managed' } });
 };
 
 /** PATCH /api/projects/:slug — update project metadata */

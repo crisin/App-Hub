@@ -21,11 +21,9 @@ import path from 'node:path'
 import matter from 'gray-matter'
 import { getProvider, type ChatMessage, type ChatResult } from './providers/index.js'
 import { logger } from './logger.js'
+import { PATHS } from './config.js'
 
-const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
-const AGENTS_DIR = process.env.APPHUB_AGENTS_DIR
-  ? path.resolve(PROJECT_ROOT, process.env.APPHUB_AGENTS_DIR)
-  : path.join(PROJECT_ROOT, 'agents')
+const AGENTS_DIR = PATHS.agents
 
 export interface AgentDef {
   slug: string

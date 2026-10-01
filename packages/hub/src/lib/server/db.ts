@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
+import { DB_PATH, HUB_ROOT } from './config.js'
 import type { ProjectStatus, ItemStage, ItemPriority, ItemType, PhaseStatus, ClaudeNoteType, DependencyType } from '@apphub/shared'
 
 // ── DB row types (match SQLite column shapes) ──────────────────────────────
@@ -89,15 +90,12 @@ export interface DbDependencyRow {
   created: string
 }
 
-// process.cwd() is the hub package root in dev, reliable across Vite SSR and built modes
-const DATA_DIR = path.join(process.cwd(), 'data')
-const DB_PATH = path.join(DATA_DIR, 'apphub.db')
 
 let _db: Database.Database | null = null
 
 export function getDb(): Database.Database {
   if (!_db) {
-    fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true })
     _db = new Database(DB_PATH)
     _db.pragma('journal_mode = WAL')
     _db.pragma('foreign_keys = ON')
@@ -329,7 +327,7 @@ function migrate(db: Database.Database) {
     db.prepare(
       `INSERT INTO projects (slug, name, description, status, template, tags, path, created, updated, color, icon)
        VALUES ('hub', 'App Hub', 'Hub development tasks', 'active', '', '["meta"]', @path, @now, @now, '#6366f1', '⬡')`,
-    ).run({ path: process.cwd(), now })
+    ).run({ path: HUB_ROOT, now })
   }
 
   // Seed the creator account if no creator exists

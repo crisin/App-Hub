@@ -17,9 +17,9 @@ import { getItemDetail, addClaudeNote } from './data.js'
 import { getDb } from './db.js'
 import { emitBoardChanged } from './claude-runner.js'
 import { logger } from './logger.js'
+import { PATHS } from './config.js'
 
-const PROJECT_ROOT = path.resolve(process.cwd(), '..', '..')
-const AGENT_LOG_DIR = path.join(PROJECT_ROOT, 'logs', 'agents')
+const AGENT_LOG_DIR = path.join(PATHS.logs, 'agents')
 
 export interface DebateTurn {
   role: string

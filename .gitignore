@@ -15,8 +15,9 @@ packages/hub/data/
 *.db-wal
 *.db-shm
 
-# Environment
+# Environment + machine-local hub config (registered project paths)
 .env
+apphub.local.json
 .env.*
 !.env.example
 

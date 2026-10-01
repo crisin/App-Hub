@@ -12,11 +12,11 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { ITEM_PRIORITIES, ITEM_STAGES } from '@apphub/shared'
 import { spawn } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
 import { buildProjectSummary, formatSummaryForPrompt } from '$lib/server/project-summary'
 import { logger } from '$lib/server/logger'
 import { findClaude, execEnv, type ClaudeSpawnSpec } from '$lib/server/exec-utils'
+import { resolveProjectScope } from '$lib/server/scanner'
+import { HUB_ROOT } from '$lib/server/config'
 
 export interface Suggestion {
   title: string
@@ -199,10 +199,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const prompt = buildPrompt(summary, focus, clampedCount)
 
     // Resolve working directory
-    const PROJECT_ROOT = path.resolve(process.cwd())
-    let cwd = PROJECT_ROOT
-    const projectPath = path.join(PROJECT_ROOT, 'projects', project_slug)
-    if (fs.existsSync(projectPath)) cwd = projectPath
+    const cwd = resolveProjectScope(project_slug)?.cwd ?? HUB_ROOT
 
     logger.info('claude', 'suggest.context', `Summary: ${summary.stats.pages}p/${summary.stats.apis}a/${summary.stats.modules}m/${summary.stats.tables}t, ${summary.itemCount} items`, {
       project: project_slug,

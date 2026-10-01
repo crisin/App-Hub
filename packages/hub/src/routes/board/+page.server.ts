@@ -4,6 +4,7 @@ import type { DbProjectRow } from '$lib/server/db'
 import { listItemsByStage, getProjectFilters, listPhases } from '$lib/server/data'
 import fs from 'node:fs'
 import path from 'node:path'
+import { HUB_ROOT, PATHS } from '$lib/server/config'
 
 export interface ProjectScope {
   slug: string
@@ -20,9 +21,8 @@ export const load: PageServerLoad = async () => {
 
   // Build available project scopes
   const db = getDb()
-  const projectRoot = path.resolve(process.cwd(), '..', '..')
   const scopes: ProjectScope[] = [
-    { slug: 'hub', label: 'App Hub', type: 'hub', path: projectRoot, color: '#6366f1', icon: '\u2B21' },
+    { slug: 'hub', label: 'App Hub', type: 'hub', path: HUB_ROOT, color: '#6366f1', icon: '\u2B21' },
   ]
 
   // Add projects from DB
@@ -41,7 +41,7 @@ export const load: PageServerLoad = async () => {
   }
 
   // Add templates
-  const templatesDir = path.resolve(projectRoot, 'templates')
+  const templatesDir = PATHS.templates
   if (fs.existsSync(templatesDir)) {
     const templateDirs = fs
       .readdirSync(templatesDir, { withFileTypes: true })

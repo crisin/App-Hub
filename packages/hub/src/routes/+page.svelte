@@ -143,7 +143,9 @@
             {/if}
           </a>
           <div class="card-actions">
-            {#if confirmDelete === project.slug}
+            {#if project.slug === 'hub'}
+              <!-- the hub project's path is the hub repo itself: never deletable -->
+            {:else if confirmDelete === project.slug}
               <span class="confirm-text">Delete?</span>
               <button class="btn-danger-sm" onclick={() => deleteProject(project.slug)}>Yes</button>
               <button class="btn-ghost-sm" onclick={() => (confirmDelete = '')}>No</button>

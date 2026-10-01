@@ -1,7 +1,5 @@
-import path from 'node:path'
-
-/** Directory where item attachments are stored */
-export const ATTACHMENTS_DIR = path.join(process.cwd(), 'data', 'attachments')
+/** Directory where item attachments are stored (resolved in config.ts) */
+export { ATTACHMENTS_DIR } from './config.js'
 
 /** Access token TTL in seconds (1 hour) */
 export const ACCESS_TTL = 60 * 60

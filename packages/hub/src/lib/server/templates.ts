@@ -9,12 +9,13 @@ import {
   DOCS_DIR,
 } from '@apphub/shared'
 import type { Template } from '@apphub/shared'
+import { PATHS } from './config.js'
 
 const execAsync = promisify(exec)
 
 /** Read templates from the templates/ directory */
 export function listTemplates(): Template[] {
-  const templatesDir = path.resolve(process.cwd(), '..', '..', 'templates')
+  const templatesDir = PATHS.templates
   if (!fs.existsSync(templatesDir)) return []
 
   const entries = fs.readdirSync(templatesDir, { withFileTypes: true })
@@ -62,8 +63,7 @@ export async function createProject(
   templateSlug: string,
 ): Promise<{ slug: string; path: string }> {
   const slug = slugify(name)
-  const projectsDir = path.resolve(process.cwd(), '..', '..', 'projects')
-  const projectPath = path.join(projectsDir, slug)
+  const projectPath = path.join(PATHS.projects, slug)
 
   if (fs.existsSync(projectPath)) {
     throw new Error(`Project "${slug}" already exists at ${projectPath}`)

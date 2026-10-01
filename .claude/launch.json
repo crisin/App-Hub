@@ -3,8 +3,21 @@
   "configurations": [
     {
       "name": "hub",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "hub-zsh",
       "runtimeExecutable": "/bin/zsh",
-      "runtimeArgs": ["-l", "-c", "npm run dev"],
+      "runtimeArgs": [
+        "-l",
+        "-c",
+        "npm run dev"
+      ],
       "port": 5174
     }
   ]
