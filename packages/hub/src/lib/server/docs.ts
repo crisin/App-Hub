@@ -35,7 +35,7 @@ const markdown = new Marked({
 })
 
 /** Panel order of sections; unknown sections sort after these */
-export const DOC_SECTIONS = ['Start', 'How-to', 'Concepts', 'Reference', 'Roadmap', 'History']
+export const DOC_SECTIONS = ['Start', 'How-to', 'Concepts', 'Reference', 'Essays', 'Roadmap', 'History']
 
 export interface DocMeta {
   /** path relative to docs/, forward slashes — the doc's id */

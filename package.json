@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run lint && svelte-check --workspace packages/hub",
-    "logbook": "node scripts/logbook.mjs"
+    "logbook": "node scripts/logbook.mjs",
+    "docs:check": "node scripts/docs-check.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -14,8 +14,9 @@ local models via Ollama). Direction: agents and workflows as data, pluggable mod
 board as the execution loop, and **visualization** (2D graphs and navigable 3D networks) as a
 first-class way to understand projects. See `docs/roadmap.md`.
 
-Full documentation lives in `docs/` (also rendered in the app's help panel). Start with
-`docs/start/overview.md` and `docs/concepts/architecture.md`.
+Full documentation lives in `docs/` (also rendered in the app's help panel; `README.md` is the
+front door with the quickstart). Start with `docs/start/overview.md`, `docs/start/features.md`
+and `docs/concepts/architecture.md`.
 
 ## Principles
 
@@ -45,10 +46,11 @@ App-Hub/
 ├── CLAUDE.md                     ← this file
 ├── .apphub.md, .apphub/          ← the hub as project "hub" (dogfooding): metadata + its own board
 ├── .gitattributes, .gitmessage   ← LF policy; logbook commit template
-├── docs/                         ← documentation = in-app help (start/ howto/ concepts/ reference/ roadmap.md history/)
+├── README.md                     ← front door: quickstart + map of the wiki
+├── docs/                         ← documentation = in-app help (start/ howto/ concepts/ reference/ essays/ roadmap.md history/)
 ├── agents/                       ← agent definitions (critic, advocate, judge, summarizer, ui-drafter)
 ├── templates/                    ← tauri-app, sveltekit-web, nextjs-fullstack, expo-app, kmp-app
-├── scripts/                      ← start.mjs (production entry), logbook.mjs, autostart-windows.mjs, install/uninstall-service.sh (macOS)
+├── scripts/                      ← start.mjs (production entry), logbook.mjs, docs-check.mjs, autostart-windows.mjs, install/uninstall-service.sh (macOS)
 ├── projects/                     ← scaffolded projects, each its own repo (gitignored)
 ├── logs/                         ← runs/ and agents/ output (gitignored)
 ├── apphub.local.json             ← machine-local: registered external project paths (gitignored)
@@ -110,6 +112,7 @@ npm run build --workspace=@apphub/shared      # shared types — first, and afte
 npm run dev                                   # hub dev server (localhost:5174)
 npm run build && npm run start                # production (scripts/start.mjs → 127.0.0.1:5174)
 npm run logbook                               # recent commits with bodies (the logbook)
+npm run docs:check                            # wiki frontmatter + links (run after touching docs/)
 npx tsc --noEmit --noUnusedLocals -p packages/hub/tsconfig.json   # must stay clean
 npm run check                                 # eslint + svelte-check (known pre-existing errors in architecture/)
 
@@ -149,7 +152,8 @@ headers timeout). After merging hub changes, restart the server.
 - All API responses `{ ok, data, error }`. Routes stay thin.
 - CSS uses the custom properties in `app.css` — keep the dark theme working.
 - Keep the CLI thin; update UI and CLI together where it applies.
-- New user-facing behavior → update the matching page in `docs/` (it is the in-app help).
+- New user-facing behavior → update the matching page in `docs/` (it is the in-app help);
+  `docs/howto/write-docs.md` has the frontmatter and link rules, `npm run docs:check` verifies them.
 - Rebuild shared after type changes: `npm run build --workspace=@apphub/shared`.
 
 ## Git & Logbook
