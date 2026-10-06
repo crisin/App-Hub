@@ -38,6 +38,13 @@ const PHASES_FILE = path.join('.apphub', 'phases.md')
 const NOTES_MARKER = '<!-- apphub:notes -->'
 const NOTE_LINE = /^- (\S+) · (\w+) · (.*)$/
 
+/**
+ * js-yaml options for every frontmatter the hub writes: no line folding, so long titles stay
+ * on one line and multi-line strings stay literal `|` blocks — diffs show real changes only.
+ */
+// (gray-matter hands stringify options through to js-yaml's dump; its typings don't model that)
+export const YAML_DUMP = { lineWidth: -1 } as unknown as Parameters<typeof matter.stringify>[2]
+
 // ── Locations ───────────────────────────────────────────────────────
 
 /** Repo whose .apphub/ holds this project's board: the project's own path, or the hub repo for scopes without one (templates, removed projects) */
@@ -104,7 +111,7 @@ function serializeItem({ item, notes, blockedBy, relatesTo }: ItemFileData): str
     const lines = notes.map((n) => `- ${n.created} · ${n.type} · ${oneLine(n.message)}`)
     body += `${body ? '\n\n' : ''}## Notes\n\n${NOTES_MARKER}\n${lines.join('\n')}`
   }
-  return matter.stringify(body ? `\n${body}\n` : '\n', data)
+  return matter.stringify(body ? `\n${body}\n` : '\n', data, YAML_DUMP)
 }
 
 function parseItem(content: string): ItemFileData | null {
@@ -206,6 +213,7 @@ export function persistPhases(projectSlug: string): void {
     const content = matter.stringify(
       '\nPhases (milestones) of this project — maintained by App Hub, editable by hand.\n',
       { project: projectSlug, phases },
+      YAML_DUMP,
     )
     writeIfChanged(path.join(project.path, PHASES_FILE), content)
   } catch (err) {
