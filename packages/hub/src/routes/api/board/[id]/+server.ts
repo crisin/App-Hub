@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getItemDetail, updateItem, deleteItem } from '$lib/server/data'
-import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
+import { afterItemsChanged } from '$lib/server/item-hooks'
+import { ITEM_STAGES } from '@apphub/shared'
 import { logger } from '$lib/server/logger'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -20,6 +21,11 @@ export const GET: RequestHandler = async ({ params }) => {
 export const PATCH: RequestHandler = async ({ params, request }) => {
   const updates = await request.json()
 
+  // Validate stage if changing (same rule as /api/items/:id)
+  if (updates.stage && !ITEM_STAGES.includes(updates.stage)) {
+    return json({ ok: false, error: `Invalid stage: ${updates.stage}` }, { status: 400 })
+  }
+
   // Map legacy field name
   if (updates.project_scope && !updates.project_slug) {
     updates.project_slug = updates.project_scope
@@ -37,12 +43,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
     stage: updated.stage,
   })
 
-  emitBoardChanged()
-
-  if (updates.stage === 'claude') {
-    autoTriggerIfNeeded()
-  }
-
+  afterItemsChanged()
   return json({ ok: true, data: updated })
 }
 
@@ -61,6 +62,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
   logger.info('board', 'item.deleted', `Deleted item ${params.id}`, { itemId: params.id })
 
-  emitBoardChanged()
+  afterItemsChanged()
   return json({ ok: true, data: { id: params.id } })
 }

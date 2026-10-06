@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { reorderItems } from '$lib/server/data'
-import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
+import { afterItemsChanged } from '$lib/server/item-hooks'
 import { logger } from '$lib/server/logger'
 
 /** PATCH /api/board/reorder — bulk reorder items (used by drag-and-drop) */
@@ -28,10 +28,6 @@ export const PATCH: RequestHandler = async ({ request }) => {
     stages: stagesInMoves,
   })
 
-  if (stagesInMoves.includes('claude')) {
-    autoTriggerIfNeeded()
-  }
-
-  emitBoardChanged()
+  afterItemsChanged()
   return json({ ok: true, data: { reordered: normalized.length } })
 }

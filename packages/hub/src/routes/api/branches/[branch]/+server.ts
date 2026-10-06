@@ -10,6 +10,7 @@ import {
 } from '$lib/server/git-worktree'
 import { logger } from '$lib/server/logger'
 import { moveItem } from '$lib/server/data'
+import { afterItemsChanged } from '$lib/server/item-hooks'
 import { resolveProjectScope } from '$lib/server/scanner'
 import { HUB_ROOT } from '$lib/server/config'
 
@@ -85,6 +86,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
   // Move issue back to backlog
   moveItem(review.issue_id, { stage: 'idea' })
+  afterItemsChanged()
 
   logger.info('claude', 'branch.discarded', `Discarded branch ${branchName}`, {
     branch: branchName,

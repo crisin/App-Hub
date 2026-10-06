@@ -2,8 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { ITEM_STAGES } from '@apphub/shared'
 import { listItemsByStage, createItem } from '$lib/server/data'
-import { autoTriggerIfNeeded, emitBoardChanged } from '$lib/server/claude-runner'
-import { autoCritiqueIfLabeled } from '$lib/server/debate'
+import { afterItemCreated } from '$lib/server/item-hooks'
 import { logger } from '$lib/server/logger'
 
 /** GET /api/board — list all items grouped by stage (board view) */
@@ -42,14 +41,8 @@ export const POST: RequestHandler = async ({ request }) => {
     project: slug,
   })
 
-  emitBoardChanged()
-
-  if (targetStage === 'claude') {
-    autoTriggerIfNeeded()
-  }
-
-  // Label hook: items labeled "debate" get critiqued automatically (fire-and-forget)
-  autoCritiqueIfLabeled(item.id, labels)
+  // refresh clients, runner pick-up, label hooks ("debate") — same for every create route
+  afterItemCreated(item)
 
   return json({ ok: true, data: item }, { status: 201 })
 }

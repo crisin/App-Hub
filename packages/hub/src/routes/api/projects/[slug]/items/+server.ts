@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import { listItemsByStage, createItem, buildItemFilters } from '$lib/server/data'
-import { emitBoardChanged } from '$lib/server/claude-runner'
+import { afterItemCreated } from '$lib/server/item-hooks'
 import { logger } from '$lib/server/logger'
 
 /** GET /api/projects/:slug/items — list items for a project */
@@ -56,6 +56,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
     stage: item.stage,
   })
 
-  emitBoardChanged()
+  afterItemCreated(item)
   return json({ ok: true, data: item }, { status: 201 })
 }

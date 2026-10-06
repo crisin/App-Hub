@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types'
 import { getDb } from '$lib/server/db'
 import type { DbItemRow } from '$lib/server/db'
 import { logger } from '$lib/server/logger'
+import { afterItemsChanged } from '$lib/server/item-hooks'
 import { persistItem } from '$lib/server/board-files'
 
 /** POST /api/board/claude/claim — claim an item from the Claude stage */
@@ -45,5 +46,6 @@ export const POST: RequestHandler = async ({ request }) => {
     title: issue.title,
   })
 
+  afterItemsChanged()
   return json({ ok: true, data: issue })
 }

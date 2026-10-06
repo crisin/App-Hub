@@ -5,7 +5,7 @@ import type { DbItemRow } from '$lib/server/db'
 import { addDependency, removeDependency } from '$lib/server/data'
 import { DEPENDENCY_TYPES } from '@apphub/shared'
 import type { DependencyType } from '@apphub/shared'
-import { emitBoardChanged } from '$lib/server/claude-runner'
+import { afterItemsChanged } from '$lib/server/item-hooks'
 import { logger } from '$lib/server/logger'
 
 /** GET /api/board/:id/dependencies — list dependencies for an item */
@@ -93,7 +93,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
     type,
   })
 
-  emitBoardChanged()
+  afterItemsChanged()
 
   const dep = db.prepare('SELECT * FROM item_dependencies WHERE id = ?').get(id)
   return json({ ok: true, data: dep }, { status: 201 })
@@ -118,6 +118,6 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
     dependsOn: depends_on_id,
   })
 
-  emitBoardChanged()
+  afterItemsChanged()
   return json({ ok: true, data: null })
 }

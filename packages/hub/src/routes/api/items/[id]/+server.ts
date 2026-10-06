@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { ITEM_STAGES } from '@apphub/shared'
 import { getItemDetail, updateItem, deleteItem } from '$lib/server/data'
-import { emitBoardChanged } from '$lib/server/claude-runner'
+import { afterItemsChanged } from '$lib/server/item-hooks'
 import { logger } from '$lib/server/logger'
 
 /** GET /api/items/:id — get a single item with full context */
@@ -34,7 +34,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
     stage: updated.stage,
   })
 
-  emitBoardChanged()
+  afterItemsChanged()
   return json({ ok: true, data: updated })
 }
 
@@ -47,6 +47,6 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
   logger.info('board', 'item.deleted', `Deleted item ${params.id}`, { itemId: params.id })
 
-  emitBoardChanged()
+  afterItemsChanged()
   return json({ ok: true, data: { id: params.id } })
 }

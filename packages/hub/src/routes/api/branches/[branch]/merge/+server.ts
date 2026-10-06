@@ -10,6 +10,7 @@ import {
 } from '$lib/server/git-worktree'
 import { logger } from '$lib/server/logger'
 import { moveItem } from '$lib/server/data'
+import { afterItemsChanged } from '$lib/server/item-hooks'
 import { resolveProjectScope } from '$lib/server/scanner'
 import { HUB_ROOT } from '$lib/server/config'
 
@@ -88,6 +89,8 @@ export const POST: RequestHandler = async ({ params }) => {
 
   // Move issue to done
   moveItem(review.issue_id, { stage: 'done', toEnd: true })
+  // done releases items it blocked — let the runner pick up the next one
+  afterItemsChanged()
 
   logger.info('claude', 'branch.merged', `Merged branch ${branchName} into ${review.base_branch}`, {
     branch: branchName,
