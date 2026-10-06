@@ -17,7 +17,7 @@ Base URL `http://localhost:5174`. Every endpoint answers `{ "ok": boolean, "data
 | GET | `/api/projects?sync=true` | list projects (`sync=true` re-scans disk first) |
 | POST | `/api/projects` | create from template `{ name, template }` → `{ slug, path, warnings }` |
 | POST | `/api/projects/register` | register an existing repo `{ path, name?, description? }` |
-| GET / PATCH / DELETE | `/api/projects/:slug` | detail / update `.apphub.md` fields / remove (see [register](../howto/register-project.md)) |
+| GET / PATCH / DELETE | `/api/projects/:slug` | detail / update `.apphub.md` fields — `name`, `description`, `context`, `status`, `tags`, `repo` ([project info](../howto/project-info.md)); other keys → 400 / remove (see [register](../howto/register-project.md)) |
 | GET / POST | `/api/projects/:slug/items` | the project's items by stage / create one |
 | GET / POST | `/api/projects/:slug/phases` | list (with completion) / create; POST `{ reorder: [...] }` reorders |
 | PATCH / DELETE | `/api/projects/:slug/phases/:id` | update / delete a phase |

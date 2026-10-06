@@ -7,7 +7,8 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import { APPHUB_META_FILE } from '@apphub/shared';
 import { logger } from '$lib/server/logger';
-import { projectLocation, unregisterProjectPath } from '$lib/server/scanner';
+import { projectLocation, unregisterProjectPath, normalizeRepoUrl, syncProjects } from '$lib/server/scanner';
+import { YAML_DUMP } from '$lib/server/board-files';
 
 /** GET /api/projects/:slug — get a single project */
 export const GET: RequestHandler = async ({ params }) => {
@@ -94,22 +95,38 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
     return json({ ok: false, error: 'Project not found' }, { status: 404 });
   }
 
-  const updates = await request.json();
+  const body = await request.json().catch(() => ({}));
   const now = new Date().toISOString();
+
+  // Only editable metadata — slug, path, created etc. are not fields to overwrite from outside
+  const EDITABLE = ['name', 'description', 'context', 'status', 'tags', 'repo'];
+  const unknown = Object.keys(body).filter((k) => !EDITABLE.includes(k));
+  if (unknown.length > 0) {
+    return json({ ok: false, error: `Not editable: ${unknown.join(', ')} (allowed: ${EDITABLE.join(', ')})` }, { status: 400 });
+  }
+  const updates: Record<string, unknown> = { ...body };
+  if (typeof updates.repo === 'string') {
+    const repo = normalizeRepoUrl(updates.repo);
+    if (updates.repo.trim() && !repo) {
+      return json({ ok: false, error: `Not a http(s) or git@ repository URL: ${updates.repo}` }, { status: 400 });
+    }
+    updates.repo = repo; // '' clears it → the git remote is used again on next sync
+  }
 
   // Update the .apphub.md file
   const metaPath = path.join(project.path, APPHUB_META_FILE);
   if (fs.existsSync(metaPath)) {
     const content = fs.readFileSync(metaPath, 'utf-8');
-    const parsed = matter(content);
+    const parsed = matter(content, {});
     Object.assign(parsed.data, updates, { updated: now });
-    const newContent = matter.stringify(parsed.content, parsed.data);
+    if (parsed.data.repo === '') delete parsed.data.repo;
+    // no line folding: keeps `context: |` blocks literal, diffs stay minimal
+    const newContent = matter.stringify(parsed.content, parsed.data, YAML_DUMP);
     fs.writeFileSync(metaPath, newContent);
   }
 
   // Update SQLite
   const fields = Object.keys(updates)
-    .filter(k => ['name', 'description', 'context', 'status', 'tags'].includes(k))
     .map(k => `${k} = @${k}`)
     .join(', ');
 
@@ -121,9 +138,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
     db.prepare(`UPDATE projects SET ${fields}, updated = @updated WHERE slug = @slug`).run(updateData);
   }
 
+  // A cleared repo falls back to the git remote — re-index so the answer shows the effective value
+  if ('repo' in updates) syncProjects();
+  const effective = db.prepare('SELECT repo FROM projects WHERE slug = ?').get(params.slug) as { repo: string } | undefined;
+
   logger.info('project', 'project.updated', `Updated project "${params.slug}"`, {
     slug: params.slug, fields: Object.keys(updates),
   });
 
-  return json({ ok: true, data: { slug: params.slug, ...updates } });
+  return json({ ok: true, data: { slug: params.slug, ...updates, repo: effective?.repo ?? '' } });
 };

@@ -11,6 +11,7 @@ export interface DbProjectRow {
   name: string
   description: string
   context: string
+  repo: string
   status: ProjectStatus
   template: string
   tags: string // JSON-encoded string[]
@@ -247,6 +248,8 @@ function migrate(db: Database.Database) {
     "ALTER TABLE projects ADD COLUMN icon TEXT DEFAULT ''",
     'ALTER TABLE projects ADD COLUMN archived_at TEXT DEFAULT NULL',
     "ALTER TABLE projects ADD COLUMN context TEXT DEFAULT ''",
+    // browsable repo URL: `repo:` in .apphub.md, else the git remote origin
+    "ALTER TABLE projects ADD COLUMN repo TEXT DEFAULT ''",
   ]) {
     try {
       db.exec(col)

@@ -81,6 +81,47 @@ export function projectLocation(projectPath: string): ProjectLocation {
   return 'external'
 }
 
+// ── Repo URL ────────────────────────────────────────────────────────
+
+/**
+ * Browsable https URL for a git remote, credentials stripped:
+ *   git@github.com:crisin/yappa.git        → https://github.com/crisin/yappa
+ *   https://user:token@github.com/x/y.git  → https://github.com/x/y
+ * Returns '' for anything that is not a plain http(s)/ssh remote.
+ */
+export function normalizeRepoUrl(raw: string): string {
+  const url = raw.trim()
+  if (!url) return ''
+  const scp = url.match(/^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/) // git@host:owner/repo.git
+  if (scp) return `https://${scp[1]}/${scp[2]}`
+  try {
+    const parsed = new URL(url.replace(/^ssh:\/\//, 'https://').replace(/^git\+/, ''))
+    if (!['http:', 'https:'].includes(parsed.protocol)) return ''
+    const pathname = parsed.pathname.replace(/\.git$/, '').replace(/\/$/, '')
+    return `https://${parsed.hostname}${pathname}` // drops user:token@ and ports
+  } catch {
+    return ''
+  }
+}
+
+/** remote "origin" of a repo, read straight from its git config (no git spawn per sync) */
+function readOriginUrl(projectPath: string): string {
+  try {
+    let gitDir = path.join(projectPath, '.git')
+    if (fs.statSync(gitDir).isFile()) {
+      // worktree / submodule: ".git" is a file pointing at the real git dir
+      const target = fs.readFileSync(gitDir, 'utf-8').match(/^gitdir:\s*(.+)$/m)?.[1]
+      if (!target) return ''
+      gitDir = path.resolve(projectPath, target.trim())
+    }
+    const config = fs.readFileSync(path.join(gitDir, 'config'), 'utf-8')
+    const section = config.split(/^\[/m).find((s) => /^remote\s+"origin"\]/.test(s))
+    return section?.match(/^\s*url\s*=\s*(.+)$/m)?.[1]?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
 // ── Sync ────────────────────────────────────────────────────────────
 
 /** Parse a project directory's .apphub.md and upsert it into SQLite. Null if no meta file. */
@@ -102,14 +143,16 @@ function syncProjectDir(projectPath: string, fallbackSlug: string): ProjectRow |
     tags: meta.tags ?? [],
     created: meta.created ?? new Date().toISOString(),
     updated: meta.updated ?? new Date().toISOString(),
+    // explicit `repo:` in .apphub.md wins; else the git remote (same on every machine)
+    repo: normalizeRepoUrl(typeof meta.repo === 'string' ? meta.repo : '') || normalizeRepoUrl(readOriginUrl(projectPath)),
     path: projectPath,
   }
 
   const db = getDb()
   db.prepare(
     `
-    INSERT INTO projects (slug, name, description, context, status, template, tags, path, created, updated, synced_at)
-    VALUES (@slug, @name, @description, @context, @status, @template, @tags, @path, @created, @updated, datetime('now'))
+    INSERT INTO projects (slug, name, description, context, status, template, tags, repo, path, created, updated, synced_at)
+    VALUES (@slug, @name, @description, @context, @status, @template, @tags, @repo, @path, @created, @updated, datetime('now'))
     ON CONFLICT(slug) DO UPDATE SET
       name = @name,
       description = @description,
@@ -117,6 +160,7 @@ function syncProjectDir(projectPath: string, fallbackSlug: string): ProjectRow |
       status = @status,
       template = @template,
       tags = @tags,
+      repo = @repo,
       path = @path,
       updated = @updated,
       synced_at = datetime('now')
@@ -129,6 +173,7 @@ function syncProjectDir(projectPath: string, fallbackSlug: string): ProjectRow |
     status: project.status,
     template: project.template,
     tags: JSON.stringify(project.tags),
+    repo: project.repo ?? '',
     path: project.path,
     created: project.created,
     updated: project.updated,

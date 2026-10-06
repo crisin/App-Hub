@@ -92,6 +92,7 @@ description: "One line"
 status: idea          # idea | active | paused | completed | archived
 template: "tauri-app"
 tags: [desktop]
+repo: "https://github.com/me/my-app"   # optional — default: the git remote origin
 context: |
   Short summary for coding agents: layers, modules, commands.
 ---

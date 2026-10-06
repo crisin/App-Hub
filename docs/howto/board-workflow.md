@@ -3,7 +3,7 @@ title: Work with the board
 section: How-to
 order: 3
 summary: From idea to merged code — lanes, the Claude lane, labels, dependencies.
-routes: ['/board', '/project']
+routes: ['/board']
 ---
 
 # Work with the board

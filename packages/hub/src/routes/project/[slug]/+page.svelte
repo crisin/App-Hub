@@ -66,17 +66,26 @@
   let confirmDeleteId = $state('')
 
   // Project description/context editing
-  let editingProjectField = $state<'description' | 'context' | null>(null)
+  let editingProjectField = $state<'description' | 'context' | 'repo' | null>(null)
   let editProjectDescription = $state(data.project.description || '')
   let editProjectContext = $state(data.project.context || '')
+  let editProjectRepo = $state(data.project.repo || '')
+  let projectFieldError = $state('')
 
-  async function saveProjectField(field: 'description' | 'context') {
-    const value = field === 'description' ? editProjectDescription : editProjectContext
-    await fetch(`/api/projects/${project.slug}`, {
+  async function saveProjectField(field: 'description' | 'context' | 'repo') {
+    const value =
+      field === 'description' ? editProjectDescription : field === 'context' ? editProjectContext : editProjectRepo
+    const res = await fetch(`/api/projects/${project.slug}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [field]: value.trim() }),
     })
+    const body = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }))
+    if (!body.ok) {
+      projectFieldError = body.error ?? 'Save failed'
+      return
+    }
+    projectFieldError = ''
     editingProjectField = null
     await invalidateAll()
   }
@@ -84,7 +93,14 @@
   function cancelProjectEdit() {
     editProjectDescription = project.description || ''
     editProjectContext = project.context || ''
+    editProjectRepo = project.repo || ''
+    projectFieldError = ''
     editingProjectField = null
+  }
+
+  /** "https://github.com/crisin/yappa" → "github.com/crisin/yappa" */
+  function repoLabel(url: string): string {
+    return url.replace(/^https?:\/\//, '')
   }
 
   // Phase state
@@ -458,6 +474,35 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <p class="project-context editable placeholder" onclick={() => { editProjectContext = ''; editingProjectField = 'context'; }}>
             + Add project context
+          </p>
+        {/if}
+
+        {#if editingProjectField === 'repo'}
+          <div class="meta-edit">
+            <label class="meta-label" for="project-repo">Repository <span class="meta-hint">— empty = use the git remote "origin"</span></label>
+            <input
+              id="project-repo"
+              class="meta-input"
+              bind:value={editProjectRepo}
+              onkeydown={(e) => { if (e.key === 'Escape') cancelProjectEdit(); if (e.key === 'Enter') saveProjectField('repo'); }}
+              placeholder="https://github.com/owner/repo"
+            />
+            {#if projectFieldError}<p class="meta-error">{projectFieldError}</p>{/if}
+            <div class="meta-edit-actions">
+              <button class="btn-ghost btn-sm" onclick={cancelProjectEdit}>Cancel</button>
+              <button class="btn-primary btn-sm" onclick={() => saveProjectField('repo')}>Save</button>
+            </div>
+          </div>
+        {:else if project.repo}
+          <p class="project-repo">
+            <a href={project.repo} target="_blank" rel="noopener noreferrer">&#x2197; {repoLabel(project.repo)}</a>
+            <button class="repo-edit" title="Change repository URL" onclick={() => { editProjectRepo = project.repo || ''; editingProjectField = 'repo'; }}>edit</button>
+          </p>
+        {:else}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <p class="project-context editable placeholder" onclick={() => { editProjectRepo = ''; editingProjectField = 'repo'; }}>
+            + Add repository URL
           </p>
         {/if}
       </div>
@@ -861,6 +906,39 @@
     margin: 0;
   }
   .project-desc.editable,
+  .project-repo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.35rem 0 0;
+    font-size: 0.85rem;
+  }
+  .project-repo a {
+    color: var(--accent-hover);
+    text-decoration: none;
+  }
+  .project-repo a:hover {
+    text-decoration: underline;
+  }
+  .repo-edit {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0;
+  }
+  .repo-edit:hover {
+    color: var(--text);
+  }
+  .meta-input {
+    width: 100%;
+  }
+  .meta-error {
+    color: var(--danger);
+    font-size: 0.8rem;
+    margin: 0.25rem 0 0;
+  }
   .project-context.editable {
     cursor: pointer;
     border-radius: 4px;

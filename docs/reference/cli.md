@@ -17,7 +17,8 @@ use `npm run dev --workspace=@apphub/cli -- <command>` via tsx). It talks to
 apphub new "My App" --template tauri-app      # scaffold (no --template: list templates)
 apphub register <path> [-n name] [-d desc]    # make an existing repo a project
 apphub list [--status active]                 # projects (re-scans disk)
-apphub status <slug> [--set active]           # show / set status
+apphub status <slug> [--set active]           # show (incl. repo) / set status
+apphub status <slug> --repo <url>             # set the repository link ("" = git remote origin)
 apphub sync                                   # re-index projects + board files (after git pull)
 ```
 

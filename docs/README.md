@@ -15,7 +15,7 @@ Every file starts with frontmatter (`title`, `section`, `order`, `summary`, opti
 | Section | Read it when you want to … |
 | --- | --- |
 | **Start** — [overview](start/overview.md), [quickstart](start/quickstart.md), [feature tour](start/features.md) | understand what the hub is, get it running, see what it can do |
-| **How-to** — [development setup](howto/dev-setup.md), [new project](howto/new-project.md), [existing repo](howto/register-project.md), [board workflow](howto/board-workflow.md), [reviews](howto/reviews.md), [agents & debate](howto/agents.md), [two machines](howto/two-machines.md), [run it permanently](howto/deploy.md), [writing docs](howto/write-docs.md) | get something done |
+| **How-to** — [development setup](howto/dev-setup.md), [new project](howto/new-project.md), [existing repo](howto/register-project.md), [project info & repo link](howto/project-info.md), [board workflow](howto/board-workflow.md), [reviews](howto/reviews.md), [agents & debate](howto/agents.md), [two machines](howto/two-machines.md), [run it permanently](howto/deploy.md), [writing docs](howto/write-docs.md) | get something done |
 | **Concepts** — [architecture](concepts/architecture.md), [board files](concepts/board-files.md), [runner](concepts/runner.md), [logbook](concepts/logbook.md), [trust model](concepts/trust-model.md) | understand why it works the way it does |
 | **Reference** — [API](reference/api.md), [CLI](reference/cli.md), [configuration](reference/config.md), [troubleshooting](reference/troubleshooting.md) | look up an endpoint, command, setting or error |
 | **Essays** — [From the inside](essays/from-the-inside.md) | read what someone thinks about the project, not how it works |
