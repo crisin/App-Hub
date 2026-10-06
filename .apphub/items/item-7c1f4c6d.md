@@ -9,7 +9,7 @@ labels:
   - planner
   - runner
   - visualization
-position: 9
+position: 8
 parent: null
 phase: null
 blocked_by:
@@ -17,7 +17,7 @@ blocked_by:
   - item-4c556a48
 relates_to: []
 created: '2026-10-01T22:22:05.154Z'
-updated: '2026-10-01T22:22:05.154Z'
+updated: '2026-10-05T22:46:55.283Z'
 ---
 
 A node-based planning canvas to work off tickets and plans: draw items as nodes and dependencies as edges (stored as the same board files — blocked_by is the edge list). Execution follows topological order: independent branches run in parallel worktrees, chains run in sequence; every node shows its live state (queued → running → review → done).

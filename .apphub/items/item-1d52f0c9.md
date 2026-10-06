@@ -8,13 +8,13 @@ type: task
 labels:
   - visualization
   - board
-position: 3
+position: 6
 parent: null
 phase: null
 blocked_by: []
 relates_to: []
 created: '2026-10-01T22:22:05.134Z'
-updated: '2026-10-01T22:22:05.134Z'
+updated: '2026-10-05T22:46:44.106Z'
 ---
 
 Render a project's board as a network: items = nodes (color = stage, size = priority), edges = blocked_by (directed), relates_to (dashed), parent (hierarchy). Highlight the critical path and blocked items.
