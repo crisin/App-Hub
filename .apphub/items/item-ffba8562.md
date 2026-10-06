@@ -24,3 +24,4 @@ Two-parter: (1) /api/board/events writes into closed SSE controllers on client d
 
 <!-- apphub:notes -->
 - 2026-10-01T22:25:25.679Z · info · Parked in plan during the yAPPA S0 pipeline test so the runner does not chain into it. Move back to claude to run it.
+- 2026-10-06T20:55:37.142Z · info · Playthrough 2026-10-06: sse.write_error debug entries flood the Logs page and hide real entries — worth doing soon.
