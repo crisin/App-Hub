@@ -39,6 +39,8 @@ App-Hub/                      npm workspaces
 | `debate.ts` | critic/advocate/judge workflow |
 | `templates.ts` | scaffolding |
 | `architecture.ts` | builds the graph shown on the Architecture page |
+| `kosmos.ts` | reads the kosmos vault (read-only) and builds the graph shown on the Map page |
+| `local-config.ts` | `apphub.local.json`: machine-local paths (registered repos, kosmos) |
 | `logger.ts` | structured activity log (Logs page) |
 
 Routes under `src/routes/api/` are thin: validate, call a module, answer
@@ -77,5 +79,8 @@ review branches, logs — exists only in SQLite.
 - **Production binds `127.0.0.1`** — the hub spawns agents with shell access; it must not be
   reachable from the LAN by default.
 
-The Architecture page renders this codebase as an interactive graph (2D and 3D). It is the
-seed of the visualization pillar on the [roadmap](../roadmap.md).
+The Architecture page renders this codebase as an interactive graph (2D and 3D). The Map page
+renders kosmos — projects and the knowledge around them — with the same components; the graph
+components take a palette, filters and settings, so a third graph is a new data source and a
+palette, not a new renderer. Both belong to the visualization pillar on the
+[roadmap](../roadmap.md).

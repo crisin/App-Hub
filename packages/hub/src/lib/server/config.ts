@@ -63,6 +63,14 @@ export const PATHS = {
   localConfig: path.join(HUB_ROOT, 'apphub.local.json'),
 }
 
+/**
+ * kosmos vault location from the environment, if set. The usual place is the
+ * "kosmos" field in apphub.local.json — kosmos.ts resolves both.
+ */
+export const KOSMOS_DIR_ENV: string | null = process.env.APPHUB_KOSMOS_DIR
+  ? path.resolve(HUB_ROOT, process.env.APPHUB_KOSMOS_DIR)
+  : null
+
 export const DB_PATH = process.env.APPHUB_DB_PATH
   ? path.resolve(HUB_ROOT, process.env.APPHUB_DB_PATH)
   : path.join(PATHS.data, 'apphub.db')

@@ -20,6 +20,7 @@ apphub list [--status active]                 # projects (re-scans disk)
 apphub status <slug> [--set active]           # show (incl. repo) / set status
 apphub status <slug> --repo <url>             # set the repository link ("" = git remote origin)
 apphub sync                                   # re-index projects + board files (after git pull)
+apphub kosmos [path] [--unset]                # show / set where the kosmos vault lives (feeds the Map)
 ```
 
 ## Board

@@ -70,6 +70,9 @@
       <a href="/logs" class="nav-link" class:active={currentPath === '/logs'}>
         <span>&#x2630;</span> Logs
       </a>
+      <a href="/map" class="nav-link" class:active={currentPath === '/map'}>
+        <span>&#x2B22;</span> Map
+      </a>
       <a href="/architecture" class="nav-link" class:active={currentPath === '/architecture'}>
         <span>&#x2B1F;</span> Architecture
       </a>

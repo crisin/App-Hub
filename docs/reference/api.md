@@ -70,6 +70,9 @@ Base URL `http://localhost:5174`. Every endpoint answers `{ "ok": boolean, "data
 | GET / DELETE | `/api/logs` | activity log (filters: level, category, issue, project, search) / clear |
 | GET / PATCH | `/api/settings` | persistent UI settings (theme, …) |
 | GET | `/api/architecture` | graph data for the Architecture page |
+| GET / PUT | `/api/kosmos` | where kosmos lives on this machine + what the map finds / set it `{ path }` (`""` removes) |
+| GET | `/api/kosmos/graph` | the map: nodes (projects, pages, topics, building blocks) and edges |
+| GET | `/api/kosmos/page?id=<path>` | one kosmos page the map may read, rendered as HTML |
 | GET | `/api/docs`, `/api/docs/<path>` | these docs: index / one article as markdown + HTML |
 
 ## Dev API (for spawned projects)

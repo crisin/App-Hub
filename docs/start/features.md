@@ -60,14 +60,24 @@ The structured activity log from SQLite, filterable by level (`debug` to `error`
 (`board`, `claude`, `project`, `sync`, `auth`, `system`, `agents`). Run transcripts are files:
 `logs/runs/` for coding runs, `logs/agents/` for debates.
 
+### Map (`/map`)
+
+*kosmos* as one graph: the projects, the playbooks, decisions, conventions and plans that concern
+them, shared topics, and the building blocks that were built more than once. kosmos is a
+markdown vault outside the hub; the hub reads it and never writes. Click a node for its details,
+**Read** opens the page in a drawer, **2D / 3D** switches the view. Projects that kosmos and the
+hub both know are one node, joined by repository. How it is fed:
+[read the map](../howto/map.md); how the two systems share the work:
+[kosmos and the hub](../concepts/kosmos.md).
+
 ### Architecture (`/architecture`)
 
 The hub's own codebase as a graph, discovered by parsing imports, `fetch` calls, SQL statements
 and the filesystem: pages, API routes, server modules, database tables, templates, child
 projects and the shared package as nodes; `fetch`, `import`, `query` and `created-from` edges.
 **2D** is Cytoscape with a dagre layout, **3D** is a WebGL force graph you can fly through. A
-detail panel shows the selected node, a settings panel filters node types. This page is the seed
-of the visualization pillar on the [roadmap](../roadmap.md).
+detail panel shows the selected node, a settings panel filters node types. The Map page uses the
+same graph components with its own palette.
 
 ### Settings (`/settings`)
 

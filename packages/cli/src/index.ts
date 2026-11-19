@@ -8,6 +8,7 @@ import { syncCommand } from './commands/sync.js'
 import { boardCommand } from './commands/board.js'
 import { agentCommand } from './commands/agent.js'
 import { registerCommand } from './commands/register.js'
+import { kosmosCommand } from './commands/kosmos.js'
 
 const program = new Command()
 
@@ -24,5 +25,6 @@ program.addCommand(syncCommand)
 program.addCommand(boardCommand)
 program.addCommand(agentCommand)
 program.addCommand(registerCommand)
+program.addCommand(kosmosCommand)
 
 program.parse()

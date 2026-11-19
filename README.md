@@ -38,8 +38,8 @@ same repo, needs no cloud and no accounts, and manages its own development on it
   agent writes reaches a branch unreviewed.
 - **Agents** as markdown files on Ollama, OpenAI-compatible servers or Claude, with a built-in
   critic / advocate / judge debate.
-- **Visualization**: the codebase as a navigable 2D and 3D graph. More of this is the next
-  roadmap pillar.
+- **Visualization**: the codebase, and *kosmos* (projects, playbooks, decisions and what
+  connects them), as navigable 2D and 3D graphs. More of this is the current roadmap pillar.
 - **Wiki in the app**: the `docs/` folder is rendered as a context-aware help panel (`?` or F1).
 - **Two machines, one board**: the board travels through git, the SQLite index is disposable.
 

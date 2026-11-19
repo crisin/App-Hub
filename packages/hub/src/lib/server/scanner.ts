@@ -7,6 +7,7 @@ import { getDb } from './db.js'
 import type { DbProjectRow } from './db.js'
 import { seedDefaultPhases } from './data.js'
 import { HUB_ROOT, PATHS } from './config.js'
+import { readLocalConfig, writeLocalConfig } from './local-config.js'
 import { logger } from './logger.js'
 
 /** A project as stored in SQLite + its disk path */
@@ -23,22 +24,6 @@ export interface ProjectRow extends ProjectMeta {
 //      (e.g. an existing app that gets its work items from the hub).
 //      Paths differ per machine, so they live in the gitignored
 //      apphub.local.json plus the APPHUB_PROJECT_PATHS env var.
-
-interface LocalConfig {
-  projects?: string[]
-}
-
-function readLocalConfig(): LocalConfig {
-  try {
-    return JSON.parse(fs.readFileSync(PATHS.localConfig, 'utf-8')) as LocalConfig
-  } catch {
-    return {}
-  }
-}
-
-function writeLocalConfig(config: LocalConfig): void {
-  fs.writeFileSync(PATHS.localConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8')
-}
 
 /** External project paths: apphub.local.json + APPHUB_PROJECT_PATHS (path-delimiter separated) */
 export function getRegisteredProjectPaths(): string[] {

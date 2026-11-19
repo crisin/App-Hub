@@ -24,6 +24,7 @@ Nothing is required — every value has a default. Put overrides in `packages/hu
 | `APPHUB_DATA_DIR` | `packages/hub/data` | SQLite index + attachments |
 | `APPHUB_DB_PATH` | `<data>/apphub.db` | the index file itself |
 | `APPHUB_PROJECT_PATHS` | — | extra project repos, `;`-separated on Windows, `:` elsewhere |
+| `APPHUB_KOSMOS_DIR` | — | the kosmos vault (or a werkstatt clone) the [map](../howto/map.md) reads; overrides `apphub.local.json` |
 | `APPHUB_URL` | `http://localhost:5174` | where the CLI finds the hub |
 
 ## Models
@@ -40,7 +41,7 @@ Nothing is required — every value has a default. Put overrides in `packages/hu
 
 | File | Content |
 | --- | --- |
-| `apphub.local.json` | `{ "projects": [ "D:/path/to/repo" ] }` — written by `apphub register` |
+| `apphub.local.json` | `{ "projects": [ "D:/path/to/repo" ], "kosmos": "D:/path/to/kosmos" }` — written by `apphub register` and `apphub kosmos` |
 | `packages/hub/.env` | the variables above |
 | `packages/hub/data/` | SQLite index, attachments |
 | `logs/` | `runs/<item>_<ts>.log`, `agents/debate_<ts>.md` |
