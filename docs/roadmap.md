@@ -2,7 +2,7 @@
 title: Roadmap
 section: Roadmap
 order: 1
-summary: Where the hub is going — foundations done, then visualization, the node planner and the agent Baukasten.
+summary: Where the hub is going — foundations done, now map and memory (visualization), then the node planner and the agent Baukasten.
 ---
 
 # Roadmap
@@ -30,18 +30,37 @@ The board is the live plan (`.apphub/items/`); this page is the map above it. Or
   `tauri-app` (Tauri 2 + Svelte 5 + Cargo workspace).
 - Git history as logbook; docs as the in-app help panel.
 
-## 2 · Visualization — next
+## 2 · Visualization — now: map and memory first
 
 Understanding comes from seeing structure: connections, dependencies, interactions — zoomable
-from the colony down to the single cell. Today the Architecture page renders the hub's own
-code as a 2D (Cytoscape) and 3D (force graph) network. Next:
+from the colony down to the single cell. The Architecture page renders the hub's own code as a
+2D (Cytoscape) and 3D (force graph) network.
 
+**Decided 2026-11-20:** the hub becomes map and memory before the runner grows (kosmos,
+`werkstatt/entscheidungen/005-app-hub-wird-zuerst-karte-und-gedaechtnis.md`). yAPPA got much
+further outside the hub than on its board; what was missing across six projects was the
+overview, not another executor. So this pillar starts with the cross-project map, fed by
+*kosmos* — the markdown vault that holds the playbooks, decisions and plans shared by all
+projects. The hub reads kosmos and never becomes its source.
+
+Done:
+
+- **Map v0** (`/map`, [how-to](howto/map.md)) — projects, playbooks, decisions, conventions,
+  plans, topics and shared building blocks as one 2D/3D graph, with a reader for every page.
+  Edges come from frontmatter (`projects`, `topics`, `verbindungen`, `bausteine`) and links.
+  kosmos projects and hub projects are joined by repository.
+
+Next, in this order:
+
+- **Register the other repos** once they are tidied up, so each project's `docs/`,
+  `docs/learnings.md` and ADRs join the map.
+- **Search and help panel over kosmos** — full text over `werkstatt/` and the registered
+  projects' docs, topic pages from `topics:`.
+- **Board on the map** — items as nodes on their project.
 - **Board as a graph** — items as nodes, `blocked_by` / `relates_to` / `parent` as edges,
   colored by stage, sized by priority; critical path highlighted.
 - **Navigable 3D networks** — fly through a project: modules, routes, tables, items and the
   agents working on them; semantic zoom (overview → package → file → symbol).
-- **Cross-project map** — all projects, their templates, shared packages and registered repos
-  as one network.
 - **Diagrams in docs** — Mermaid (or similar) rendered in the help panel, so concept pages show
   instead of tell.
 - **Live overlays** — runner activity and agent runs pulsing on the graph via the SSE bus.
@@ -86,9 +105,11 @@ Prerequisite for parallel execution in the node planner.
 
 ## 7 · Projects on the hub
 
-- **yAPPA** (self-hosted gaming voice chat, Tauri + Rust + LiveKit) — `projects/yappa`, the
+- **yAPPA** (self-hosted gaming voice chat, Tauri + Rust + LiveKit) — `projects/yappa` was the
   first external project through the full pipeline: spike S0 passed on 2026-10-02 (skeleton
-  built by Claude Code in a worktree, reviewed, merged). Next: S1 PoC, S5 UI-stack ADR.
+  built by Claude Code in a worktree, reviewed, merged). **Since 2026-11-10 yAPPA is built
+  outside the hub** in its own repo (`dev/YAPPA`, kosmos decision 003); `projects/yappa` is the
+  retired variant and will be archived.
 - **lyrics-helper** — register the existing repo so it gets its work items from the hub.
 
 ## Later, maybe

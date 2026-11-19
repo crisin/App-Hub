@@ -14,6 +14,10 @@ local models via Ollama). Direction: agents and workflows as data, pluggable mod
 board as the execution loop, and **visualization** (2D graphs and navigable 3D networks) as a
 first-class way to understand projects. See `docs/roadmap.md`.
 
+The hub has a sibling: **kosmos**, the user's markdown knowledge vault (Obsidian) with the
+cross-project memory in its `werkstatt/` repo. The hub reads kosmos and draws it as the Map;
+it never writes into it. See `docs/concepts/kosmos.md`.
+
 Full documentation lives in `docs/` (also rendered in the app's help panel; `README.md` is the
 front door with the quickstart). Start with `docs/start/overview.md`, `docs/start/features.md`
 and `docs/concepts/architecture.md`.
@@ -61,9 +65,10 @@ App-Hub/
         └── src/
             ├── hooks.server.ts   ← startup: stale-claim cleanup, project + board sync
             ├── routes/           ← pages (dashboard, board, project, reviews, agents, templates, logs,
-            │                       architecture, settings) + api/ (see docs/reference/api.md)
+            │                       map, architecture, settings) + api/ (see docs/reference/api.md)
             └── lib/
-                ├── components/   ← HelpPanel, PhaseTimeline, SuggestPanel, architecture/ graphs
+                ├── components/   ← HelpPanel, PhaseTimeline, SuggestPanel, architecture/ graphs (palette-driven,
+                │                   shared by Architecture and Map), map/ reader
                 └── server/
                     ├── config.ts          ← ALL paths + env overrides; never use process.cwd()
                     ├── scanner.ts         ← project discovery/registry, resolveProjectScope()
@@ -77,6 +82,8 @@ App-Hub/
                     ├── agents.ts, providers/, debate.ts  ← agent layer
                     ├── templates.ts       ← scaffolding
                     ├── docs.ts            ← docs/ index + rendering for the help panel
+                    ├── kosmos.ts          ← reads the kosmos vault (read-only) → graph for the Map page
+                    ├── local-config.ts    ← apphub.local.json (machine-local paths: registered repos, kosmos)
                     └── architecture.ts, logger.ts, settings.ts, auth.ts, project-summary.ts, …
 ```
 
@@ -120,34 +127,40 @@ npm run check                                 # eslint + svelte-check (known pre
 npm run cli -- new "My App" --template tauri-app
 npm run cli -- register <path>                # existing repo anywhere on disk
 npm run cli -- sync                           # re-index projects + board files (after git pull)
+npm run cli -- kosmos [path]                  # show / set where the kosmos vault lives (feeds /map)
 npm run cli -- board list | add "Title" -p <slug> | move <id> claude | claude run
 npm run cli -- agent list | run <slug> "…" | critique <item-id> -r 2
 ```
 
 The full API is in `docs/reference/api.md`; every endpoint answers `{ ok, data?, error? }`.
 
-## Current State (v0.2 foundations, 2026-10-02)
+## Current State (v0.2 foundations 2026-10-02, map v0 2026-11-20)
 
 Working: dashboard, project pages, 6-lane board with dependencies and phases, board as markdown
 files with write-through + sync, runner with worktree isolation (Claude Code default, aider via
 label), review lane with logbook merge commits, SSE live output, agent layer (Ollama /
 OpenAI-compatible / Anthropic) with debate workflow (label `debate`), project registry for repos
 outside `projects/`, five templates incl. `tauri-app`, help panel (`?` / F1) rendering `docs/`,
-architecture graph (2D + 3D), dogfooding (the hub's roadmap is on its own board), autostart
-(macOS launchd service, Windows Task Scheduler script).
+architecture graph (2D + 3D), **map** of kosmos (projects, playbooks, decisions, topics, shared
+building blocks; 2D + 3D; page reader), dogfooding (the hub's roadmap is on its own board),
+autostart (macOS launchd service, Windows Task Scheduler script).
 
-Next: visualization pillar, then the node planner (DAG of items executed sequentially and in
-parallel worktrees), runner concurrency, agent Baukasten (workflows as data, stage hooks, cron,
-MCP server). Details and order: `docs/roadmap.md`.
+Next: map and memory first (decided 2026-11-20) — register the other repos, search over
+kosmos, board items on the map, MCP server — then the node planner (DAG of items executed
+sequentially and in parallel worktrees), runner concurrency, agent Baukasten (workflows as
+data, stage hooks, cron). Details and order: `docs/roadmap.md`.
 
 Gotchas: `npm run dev` caches the runner module graph — restart after changing
 `claude-runner.ts` / `coder-backends.ts`. Local inference must be streamed (undici's 5-min
-headers timeout). After merging hub changes, restart the server.
+headers timeout). After merging hub changes, restart the server. After a Node upgrade the
+native `better-sqlite3` must match (`npm install`; v12+ for Node 26).
 
 ## Coding Guidelines
 
 - Svelte 5 runes (`$state`, `$props`, `$derived`) — no Svelte 4 stores. Check whether a
   component's `<script>` is `lang="ts"` before writing type annotations (the root layout is JS).
+- kosmos is read-only for the hub: no write path into the vault, and only `werkstatt/` and
+  `projekte/` are read (`VAULT_FOLDERS` in `kosmos.ts`).
 - Server code in `$lib/server/`. Paths only from `config.ts`. Board writes only through
   `data.ts` (it writes the files); raw SQL on `items` elsewhere must call `persistItem()`.
 - All API responses `{ ok, data, error }`. Routes stay thin.
