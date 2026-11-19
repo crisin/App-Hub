@@ -1,27 +1,45 @@
 <!--
   3D graph visualization using 3d-force-graph (Three.js + d3-force-3d).
-  Reads settings from the shared store and reacts to changes.
+  Reads settings and filters from a store and reacts to changes — by default
+  the architecture graph's; another graph passes its own palette, filters and
+  settings (see routes/map).
 -->
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
+  import { archSettings, archFilters, type ArchSettings } from '$lib/stores/architecture-settings.svelte'
   import {
-    archSettings,
-    nodeFilters,
-    edgeFilters,
-    getVisibleTypes,
-    getVisibleEdgeTypes,
-  } from '$lib/stores/architecture-settings.svelte'
-  import { TYPE_COLORS, TYPE_LABELS, EDGE_COLORS, type ArchGraphData, type SelectedNodeInfo, type ConnectedNode } from './constants'
+    ARCH_PALETTE,
+    type ArchGraphData,
+    type GraphFilters,
+    type GraphPalette,
+    type SelectedNodeInfo,
+    type ConnectedNode,
+  } from './constants'
 
   let {
     graphData,
     onselect,
     ondeselect,
+    palette = ARCH_PALETTE,
+    filters = archFilters,
+    settings = archSettings,
   }: {
     graphData: ArchGraphData
     onselect: (node: SelectedNodeInfo, connections: ConnectedNode[]) => void
     ondeselect: () => void
+    palette?: GraphPalette
+    filters?: GraphFilters
+    settings?: ArchSettings
   } = $props()
+
+  const shown = (group: Record<string, boolean>) => Object.keys(group).filter((type) => group[type])
+
+  /** Sphere volume per type: "shared" keeps its historic x3, palettes scale by area */
+  function nodeVolume(type: string): number {
+    if (type === 'shared') return 3
+    const scale = palette.nodeScale?.[type] ?? 1
+    return scale * scale
+  }
 
   let container: HTMLDivElement
   let graph3d: any = null
@@ -31,8 +49,8 @@
   // ── Build 3D data ─────────────────────────────────────────────
 
   function build3dData() {
-    const visibleTypes = getVisibleTypes()
-    const visibleEdgeTypes = getVisibleEdgeTypes()
+    const visibleTypes = shown(filters.nodes)
+    const visibleEdgeTypes = shown(filters.edges)
 
     const filteredNodes = graphData.nodes
       .filter((n) => !n.id.startsWith('group:') && visibleTypes.includes(n.type))
@@ -40,9 +58,9 @@
         id: n.id,
         label: n.label,
         type: n.type,
-        color: TYPE_COLORS[n.type] || '#888',
-        val: n.type === 'shared' ? (archSettings.nodeSize / 30) * 3 : archSettings.nodeSize / 30,
         ...n.meta,
+        color: palette.nodeColors[n.type] || '#888',
+        val: (settings.nodeSize / 30) * nodeVolume(n.type),
       }))
 
     const nodeIds = new Set(filteredNodes.map((n) => n.id))
@@ -58,7 +76,7 @@
         source: e.source,
         target: e.target,
         type: e.type,
-        color: EDGE_COLORS[e.type] || '#888',
+        color: palette.edgeColors[e.type] || '#888',
       }))
 
     return { nodes: filteredNodes, links: filteredLinks }
@@ -87,7 +105,7 @@
 
   function updateStyle() {
     if (!graph3d) return
-    const s = archSettings
+    const s = settings
     graph3d
       .backgroundColor(s.bgColor)
       .linkOpacity(s.edgeOpacity)
@@ -118,13 +136,13 @@
     _THREE = await import('three')
     const ForceGraph3DModule = await import('3d-force-graph')
     const ForceGraph3DFn = ForceGraph3DModule.default as any
-    const s = archSettings
+    const s = settings
     const graphDataObj = build3dData()
 
     graph3d = ForceGraph3DFn()(container)
       .graphData(graphDataObj)
       .backgroundColor(s.bgColor)
-      .nodeLabel((node: any) => `${TYPE_LABELS[node.type] || node.type}: ${node.label}`)
+      .nodeLabel((node: any) => `${palette.nodeLabels[node.type] || node.type}: ${node.label}`)
       .nodeColor((node: any) => node.color)
       .nodeVal((node: any) => node.val)
       .nodeResolution(s.nodeResolution)
@@ -143,17 +161,10 @@
       .showNavInfo(false)
       .onNodeClick((node: any) => {
         const nodeInfo: SelectedNodeInfo = {
+          ...graphData.nodes.find((n) => n.id === node.id)?.meta,
           id: node.id,
           label: node.label,
           type: node.type,
-          path: node.path,
-          route: node.route,
-          lines: node.lines,
-          methods: node.methods,
-          exports: node.exports,
-          columns: node.columns,
-          description: node.description,
-          tags: node.tags,
         }
         const connections: ConnectedNode[] = graphData.edges
           .filter((e) => e.source === node.id || e.target === node.id)
@@ -256,7 +267,7 @@
   // Structural changes → rebuild data
   let prevFiltersKey = ''
   $effect(() => {
-    const key = JSON.stringify({ nf: nodeFilters, ef: edgeFilters })
+    const key = JSON.stringify({ nf: filters.nodes, ef: filters.edges })
     if (key !== prevFiltersKey && prevFiltersKey !== '') {
       updateData()
     }
@@ -267,11 +278,11 @@
   let prevStyleKey = ''
   $effect(() => {
     const key = JSON.stringify({
-      eo: archSettings.edgeOpacity, ew: archSettings.edgeWidth,
-      sa: archSettings.showArrows, sp2: archSettings.showParticles,
-      ps: archSettings.particleSpeed, pd: archSettings.particleDensity,
-      lc: archSettings.linkCurvature, bg: archSettings.bgColor,
-      nr: archSettings.nodeResolution, gs: archSettings.glowStrength,
+      eo: settings.edgeOpacity, ew: settings.edgeWidth,
+      sa: settings.showArrows, sp2: settings.showParticles,
+      ps: settings.particleSpeed, pd: settings.particleDensity,
+      lc: settings.linkCurvature, bg: settings.bgColor,
+      nr: settings.nodeResolution, gs: settings.glowStrength,
     })
     if (key !== prevStyleKey && prevStyleKey !== '') {
       updateStyle()
@@ -283,13 +294,13 @@
   let prevLayoutKey = ''
   $effect(() => {
     const key = JSON.stringify({
-      sp: archSettings.spacing, rp: archSettings.repulsion,
+      sp: settings.spacing, rp: settings.repulsion,
     })
     if (key !== prevLayoutKey && prevLayoutKey !== '') {
       if (graph3d) {
         import('d3-force-3d' as any).then((d3: any) => {
-          graph3d.d3Force('charge', d3.forceManyBody().strength(-archSettings.repulsion * 0.02))
-          graph3d.d3Force('link')?.distance(80 * archSettings.spacing)
+          graph3d.d3Force('charge', d3.forceManyBody().strength(-settings.repulsion * 0.02))
+          graph3d.d3Force('link')?.distance(80 * settings.spacing)
           graph3d.d3ReheatSimulation()
         })
       }

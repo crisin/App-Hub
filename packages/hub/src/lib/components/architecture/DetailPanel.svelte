@@ -3,25 +3,30 @@
   Shows metadata and connections for the selected node.
 -->
 <script lang="ts">
-  import { TYPE_COLORS, TYPE_LABELS, type SelectedNodeInfo, type ConnectedNode } from './constants'
+  import { ARCH_PALETTE, type GraphPalette, type SelectedNodeInfo, type ConnectedNode } from './constants'
 
   let {
     node,
     connections = [],
     onclose,
     onconnectionclick,
+    onread,
+    palette = ARCH_PALETTE,
   }: {
     node: SelectedNodeInfo
     connections: ConnectedNode[]
     onclose: () => void
     onconnectionclick?: (id: string) => void
+    /** Open the node's page in a reader — the button only shows when this is set */
+    onread?: (pageId: string) => void
+    palette?: GraphPalette
   } = $props()
 </script>
 
 <div class="detail-panel">
   <div class="detail-header">
-    <span class="detail-badge" style="background: {TYPE_COLORS[node.type]}">
-      {TYPE_LABELS[node.type] || node.type}
+    <span class="detail-badge" style="background: {palette.nodeColors[node.type] ?? '#888'}">
+      {palette.nodeLabels[node.type] || node.type}
     </span>
     <button class="detail-close" onclick={onclose}>&times;</button>
   </div>
@@ -89,6 +94,35 @@
     </div>
   {/if}
 
+  {#each node.details ?? [] as detail}
+    <div class="d-field">
+      <span class="d-key">{detail.key}</span>
+      <span class="d-val">{detail.value}</span>
+    </div>
+  {/each}
+
+  {#if node.tags?.length}
+    <div class="d-field">
+      <span class="d-key">Topics</span>
+      <div class="d-chips">
+        {#each node.tags as tag}
+          <span class="d-chip">{tag}</span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if node.url || (node.pageId && onread)}
+    <div class="d-actions">
+      {#if node.pageId && onread}
+        <button class="d-action primary" onclick={() => onread?.(node.pageId!)}>Read</button>
+      {/if}
+      {#if node.url}
+        <a class="d-action" href={node.url} target="_blank" rel="noreferrer">Repository &#x2197;</a>
+      {/if}
+    </div>
+  {/if}
+
   {#if connections.length > 0}
     <div class="d-section">
       <span class="d-key">Connections ({connections.length})</span>
@@ -98,7 +132,7 @@
             class="d-conn"
             onclick={() => onconnectionclick?.(conn.id)}
           >
-            <span class="d-conn-dot" style="background: {TYPE_COLORS[conn.type]}"></span>
+            <span class="d-conn-dot" style="background: {palette.nodeColors[conn.type] ?? '#888'}"></span>
             {conn.label}
           </button>
         {/each}
@@ -220,6 +254,23 @@
     background: rgba(59, 130, 246, 0.1);
     color: #60a5fa;
   }
+
+  .d-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .d-action {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.28rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .d-action:hover { background: rgba(255,255,255,0.09); }
+  .d-action.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .d-action.primary:hover { filter: brightness(1.1); }
 
   .d-connections {
     display: flex;

@@ -1,27 +1,38 @@
 <!--
   2D graph visualization using Cytoscape.js.
-  Reads settings from the shared store and reacts to changes.
+  Reads settings and filters from a store and reacts to changes — by default
+  the architecture graph's; another graph passes its own palette, filters and
+  settings (see routes/map).
 -->
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
+  import { archSettings, archFilters, type ArchSettings } from '$lib/stores/architecture-settings.svelte'
   import {
-    archSettings,
-    nodeFilters,
-    edgeFilters,
-    getVisibleTypes,
-    getVisibleEdgeTypes,
-  } from '$lib/stores/architecture-settings.svelte'
-  import { TYPE_COLORS, EDGE_COLORS, type ArchGraphData, type SelectedNodeInfo, type ConnectedNode } from './constants'
+    ARCH_PALETTE,
+    type ArchGraphData,
+    type GraphFilters,
+    type GraphPalette,
+    type SelectedNodeInfo,
+    type ConnectedNode,
+  } from './constants'
 
   let {
     graphData,
     onselect,
     ondeselect,
+    palette = ARCH_PALETTE,
+    filters = archFilters,
+    settings = archSettings,
   }: {
     graphData: ArchGraphData
     onselect: (node: SelectedNodeInfo, connections: ConnectedNode[]) => void
     ondeselect: () => void
+    palette?: GraphPalette
+    filters?: GraphFilters
+    settings?: ArchSettings
   } = $props()
+
+  const shown = (group: Record<string, boolean>) => Object.keys(group).filter((type) => group[type])
 
   let container: HTMLDivElement
   let cy: any = null
@@ -29,9 +40,9 @@
   // ── Build Cytoscape elements ──────────────────────────────────
 
   function buildElements() {
-    const visibleTypes = getVisibleTypes()
-    const visibleEdgeTypes = getVisibleEdgeTypes()
-    const useGroups = archSettings.layoutMode === 'dagre' && archSettings.showGroups
+    const visibleTypes = shown(filters.nodes)
+    const visibleEdgeTypes = shown(filters.edges)
+    const useGroups = settings.layoutMode === 'dagre' && settings.showGroups
 
     const nodes = graphData.nodes
       .filter((n) => {
@@ -74,7 +85,7 @@
   // ── Cytoscape style ───────────────────────────────────────────
 
   function getCyStyle() {
-    const s = archSettings
+    const s = settings
     return [
       {
         selector: ':parent',
@@ -113,11 +124,19 @@
           'overlay-padding': 4,
         },
       },
-      ...Object.entries(TYPE_COLORS).map(([type, color]) => ({
+      ...Object.entries(palette.nodeColors).map(([type, color]) => ({
         selector: `node[leaf][type="${type}"]`,
         style: { 'background-color': color },
       })),
-      ...Object.entries(TYPE_COLORS).map(([type, color]) => ({
+      ...Object.entries(palette.nodeScale ?? {}).map(([type, scale]) => ({
+        selector: `node[leaf][type="${type}"]`,
+        style: { width: s.nodeSize * scale, height: s.nodeSize * scale },
+      })),
+      ...Object.entries(palette.nodeShapes ?? {}).map(([type, shape]) => ({
+        selector: `node[leaf][type="${type}"]`,
+        style: { shape: shape as any },
+      })),
+      ...Object.entries(palette.nodeColors).map(([type, color]) => ({
         selector: `node:parent[type="${type}"]`,
         style: {
           'background-color': 'rgba(255,255,255,0.03)',
@@ -129,7 +148,7 @@
       {
         selector: 'node[type="shared"]',
         style: {
-          'background-color': TYPE_COLORS.shared,
+          'background-color': palette.nodeColors.shared ?? '#ec4899',
           width: s.nodeSize + 8,
           height: s.nodeSize + 8,
           shape: 'diamond' as any,
@@ -152,7 +171,7 @@
           'text-margin-y': -8,
         },
       },
-      ...Object.entries(EDGE_COLORS).map(([type, color]) => ({
+      ...Object.entries(palette.edgeColors).map(([type, color]) => ({
         selector: `edge[edgeType="${type}"]`,
         style: { 'line-color': color, 'target-arrow-color': color },
       })),
@@ -173,8 +192,9 @@
 
   // ── Layout config ─────────────────────────────────────────────
 
-  function getLayoutConfig() {
-    const s = archSettings
+  /** `animate: false` for the first layout: the graph is simply there, nothing drifts under the cursor */
+  function getLayoutConfig(animate = true) {
+    const s = settings
     if (s.layoutMode === 'dagre') {
       return {
         name: 'dagre',
@@ -183,7 +203,7 @@
         rankSep: 100 * s.spacing,
         edgeSep: 30 * s.spacing,
         padding: 50,
-        animate: s.animateLayout,
+        animate: animate && s.animateLayout,
         animationDuration: 400,
         fit: true,
       }
@@ -194,9 +214,11 @@
       idealEdgeLength: () => 100 * s.spacing,
       edgeElasticity: () => 100 / s.spacing,
       gravity: s.gravity,
+      nodeDimensionsIncludeLabels: true,
+      componentSpacing: 80,
       numIter: 1500,
       padding: 50,
-      animate: s.animateLayout,
+      animate: animate && s.animateLayout,
       animationDuration: 500,
       randomize: s.spacing > 1.2,
       fit: true,
@@ -266,12 +288,14 @@
     const cytoscape = (await import('cytoscape')).default
     const dagre = (await import('cytoscape-dagre')).default
     try { cytoscape.use(dagre) } catch { /* already registered */ }
+    // the imports are awaited: the component may be gone by now (navigation, HMR)
+    if (!container || !mounted) return
 
     cy = cytoscape({
       container,
       elements: buildElements(),
       style: getCyStyle() as any,
-      layout: getLayoutConfig() as any,
+      layout: getLayoutConfig(false) as any,
       minZoom: 0.1,
       maxZoom: 5,
     })
@@ -306,9 +330,9 @@
   let prevFiltersKey = ''
   $effect(() => {
     const key = JSON.stringify({
-      nf: nodeFilters, ef: edgeFilters,
-      lm: archSettings.layoutMode, dd: archSettings.dagDirection,
-      sg: archSettings.showGroups,
+      nf: filters.nodes, ef: filters.edges,
+      lm: settings.layoutMode, dd: settings.dagDirection,
+      sg: settings.showGroups,
     })
     if (key !== prevFiltersKey && prevFiltersKey !== '') {
       fullRebuild()
@@ -320,10 +344,10 @@
   let prevStyleKey = ''
   $effect(() => {
     const key = JSON.stringify({
-      ns: archSettings.nodeSize, ls: archSettings.labelSize,
-      sl: archSettings.showLabels, eo: archSettings.edgeOpacity,
-      ew: archSettings.edgeWidth, sa: archSettings.showArrows,
-      sel: archSettings.showEdgeLabels, al: archSettings.animateLayout,
+      ns: settings.nodeSize, ls: settings.labelSize,
+      sl: settings.showLabels, eo: settings.edgeOpacity,
+      ew: settings.edgeWidth, sa: settings.showArrows,
+      sel: settings.showEdgeLabels, al: settings.animateLayout,
     })
     if (key !== prevStyleKey && prevStyleKey !== '') {
       updateStyleOnly()
@@ -335,8 +359,8 @@
   let prevLayoutKey = ''
   $effect(() => {
     const key = JSON.stringify({
-      sp: archSettings.spacing, gr: archSettings.gravity,
-      rp: archSettings.repulsion,
+      sp: settings.spacing, gr: settings.gravity,
+      rp: settings.repulsion,
     })
     if (key !== prevLayoutKey && prevLayoutKey !== '') {
       cy?.layout(getLayoutConfig() as any).run()

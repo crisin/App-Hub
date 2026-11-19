@@ -1,5 +1,7 @@
 <!--
-  Architecture Settings Panel — floating glassmorphism overlay.
+  Graph settings panel — floating glassmorphism overlay. Defaults to the
+  architecture graph; another graph passes its palette, filters, settings and
+  reset (see routes/map).
 
   Uses reusable snippets for control rows. To add a new setting:
   1. Add the field to architecture-settings.svelte.ts DEFAULTS
@@ -9,14 +11,30 @@
 <script lang="ts">
   import {
     archSettings,
-    nodeFilters,
-    edgeFilters,
+    archFilters,
     openSections,
     resetSettings,
-    selectAll,
     toggleSection,
+    type ArchSettings,
   } from '$lib/stores/architecture-settings.svelte'
-  import { TYPE_LABELS, TYPE_COLORS, EDGE_LABELS, EDGE_COLORS } from './constants'
+  import { ARCH_PALETTE, type GraphFilters, type GraphPalette } from './constants'
+
+  let {
+    palette = ARCH_PALETTE,
+    filters = archFilters,
+    settings = archSettings,
+    onreset = resetSettings,
+  }: {
+    palette?: GraphPalette
+    filters?: GraphFilters
+    settings?: ArchSettings
+    onreset?: () => void
+  } = $props()
+
+  function selectAll(group: 'nodes' | 'edges', value: boolean) {
+    const target = filters[group]
+    Object.keys(target).forEach((type) => (target[type] = value))
+  }
 </script>
 
 <!-- ── Reusable snippet components ─────────────────────────────── -->
@@ -74,7 +92,7 @@
 <div class="settings-panel">
   <div class="settings-head">
     <span class="settings-title">Settings</span>
-    <button class="reset-btn" onclick={resetSettings}>Reset</button>
+    <button class="reset-btn" onclick={onreset}>Reset</button>
   </div>
   <div class="settings-scroll">
     <div class="settings-body">
@@ -87,27 +105,27 @@
         </button>
         {#if openSections.layout}
           <div class="s-section-body">
-            {#if archSettings.viewMode === '2d'}
+            {#if settings.viewMode === '2d'}
               {@render toggleRow('Mode', [
-                { label: 'Hierarchy', active: archSettings.layoutMode === 'dagre', onclick: () => (archSettings.layoutMode = 'dagre') },
-                { label: 'Force', active: archSettings.layoutMode === 'cose', onclick: () => (archSettings.layoutMode = 'cose') },
+                { label: 'Hierarchy', active: settings.layoutMode === 'dagre', onclick: () => (settings.layoutMode = 'dagre') },
+                { label: 'Force', active: settings.layoutMode === 'cose', onclick: () => (settings.layoutMode = 'cose') },
               ])}
-              {#if archSettings.layoutMode === 'dagre'}
+              {#if settings.layoutMode === 'dagre'}
                 {@render toggleRow('Direction', [
-                  { label: '\u2193', active: archSettings.dagDirection === 'TB', onclick: () => (archSettings.dagDirection = 'TB'), title: 'Top to Bottom' },
-                  { label: '\u2192', active: archSettings.dagDirection === 'LR', onclick: () => (archSettings.dagDirection = 'LR'), title: 'Left to Right' },
-                  { label: '\u2191', active: archSettings.dagDirection === 'BT', onclick: () => (archSettings.dagDirection = 'BT'), title: 'Bottom to Top' },
-                  { label: '\u2190', active: archSettings.dagDirection === 'RL', onclick: () => (archSettings.dagDirection = 'RL'), title: 'Right to Left' },
+                  { label: '\u2193', active: settings.dagDirection === 'TB', onclick: () => (settings.dagDirection = 'TB'), title: 'Top to Bottom' },
+                  { label: '\u2192', active: settings.dagDirection === 'LR', onclick: () => (settings.dagDirection = 'LR'), title: 'Left to Right' },
+                  { label: '\u2191', active: settings.dagDirection === 'BT', onclick: () => (settings.dagDirection = 'BT'), title: 'Bottom to Top' },
+                  { label: '\u2190', active: settings.dagDirection === 'RL', onclick: () => (settings.dagDirection = 'RL'), title: 'Right to Left' },
                 ], true)}
               {/if}
             {/if}
-            {@render sliderRow('Spacing', archSettings.spacing, 0.5, 5, 0.1, archSettings.spacing.toFixed(1), (v) => (archSettings.spacing = v))}
-            {#if archSettings.viewMode === '2d' && archSettings.layoutMode === 'cose'}
-              {@render sliderRow('Gravity', archSettings.gravity, 0.01, 1, 0.01, archSettings.gravity.toFixed(2), (v) => (archSettings.gravity = v))}
+            {@render sliderRow('Spacing', settings.spacing, 0.5, 5, 0.1, settings.spacing.toFixed(1), (v) => (settings.spacing = v))}
+            {#if settings.viewMode === '2d' && settings.layoutMode === 'cose'}
+              {@render sliderRow('Gravity', settings.gravity, 0.01, 1, 0.01, settings.gravity.toFixed(2), (v) => (settings.gravity = v))}
             {/if}
-            {@render sliderRow('Repulsion', archSettings.repulsion, 1000, 20000, 500, (archSettings.repulsion / 1000).toFixed(1) + 'k', (v) => (archSettings.repulsion = v))}
-            {#if archSettings.viewMode === '2d'}
-              {@render switchRow('Animate', archSettings.animateLayout, (v) => (archSettings.animateLayout = v))}
+            {@render sliderRow('Repulsion', settings.repulsion, 1000, 20000, 500, (settings.repulsion / 1000).toFixed(1) + 'k', (v) => (settings.repulsion = v))}
+            {#if settings.viewMode === '2d'}
+              {@render switchRow('Animate', settings.animateLayout, (v) => (settings.animateLayout = v))}
             {/if}
           </div>
         {/if}
@@ -126,14 +144,14 @@
         </button>
         {#if openSections.nodes}
           <div class="s-section-body">
-            {@render filterChips(TYPE_LABELS, TYPE_COLORS, nodeFilters, 'dot')}
-            {@render sliderRow('Size', archSettings.nodeSize, 10, 60, 1, String(archSettings.nodeSize), (v) => (archSettings.nodeSize = v))}
-            {@render switchRow('Labels', archSettings.showLabels, (v) => (archSettings.showLabels = v))}
-            {#if archSettings.showLabels}
-              {@render sliderRow('Label size', archSettings.labelSize, 6, 20, 1, String(archSettings.labelSize), (v) => (archSettings.labelSize = v))}
+            {@render filterChips(palette.nodeLabels, palette.nodeColors, filters.nodes, 'dot')}
+            {@render sliderRow('Size', settings.nodeSize, 10, 60, 1, String(settings.nodeSize), (v) => (settings.nodeSize = v))}
+            {@render switchRow('Labels', settings.showLabels, (v) => (settings.showLabels = v))}
+            {#if settings.showLabels}
+              {@render sliderRow('Label size', settings.labelSize, 6, 20, 1, String(settings.labelSize), (v) => (settings.labelSize = v))}
             {/if}
-            {#if archSettings.viewMode === '2d'}
-              {@render switchRow('Groups', archSettings.showGroups, (v) => (archSettings.showGroups = v))}
+            {#if settings.viewMode === '2d'}
+              {@render switchRow('Groups', settings.showGroups, (v) => (settings.showGroups = v))}
             {/if}
           </div>
         {/if}
@@ -151,19 +169,19 @@
         </button>
         {#if openSections.edges}
           <div class="s-section-body">
-            {@render filterChips(EDGE_LABELS, EDGE_COLORS, edgeFilters, 'line')}
-            {@render sliderRow('Opacity', archSettings.edgeOpacity, 0.05, 1, 0.05, (archSettings.edgeOpacity * 100).toFixed(0) + '%', (v) => (archSettings.edgeOpacity = v))}
-            {@render sliderRow('Width', archSettings.edgeWidth, 0.5, 5, 0.25, archSettings.edgeWidth.toFixed(1), (v) => (archSettings.edgeWidth = v))}
-            {@render switchRow('Arrows', archSettings.showArrows, (v) => (archSettings.showArrows = v))}
-            {#if archSettings.viewMode === '2d'}
-              {@render switchRow('Edge labels', archSettings.showEdgeLabels, (v) => (archSettings.showEdgeLabels = v))}
+            {@render filterChips(palette.edgeLabels, palette.edgeColors, filters.edges, 'line')}
+            {@render sliderRow('Opacity', settings.edgeOpacity, 0.05, 1, 0.05, (settings.edgeOpacity * 100).toFixed(0) + '%', (v) => (settings.edgeOpacity = v))}
+            {@render sliderRow('Width', settings.edgeWidth, 0.5, 5, 0.25, settings.edgeWidth.toFixed(1), (v) => (settings.edgeWidth = v))}
+            {@render switchRow('Arrows', settings.showArrows, (v) => (settings.showArrows = v))}
+            {#if settings.viewMode === '2d'}
+              {@render switchRow('Edge labels', settings.showEdgeLabels, (v) => (settings.showEdgeLabels = v))}
             {/if}
           </div>
         {/if}
       </div>
 
       <!-- 3D Effects -->
-      {#if archSettings.viewMode === '3d'}
+      {#if settings.viewMode === '3d'}
         <div class="s-section" class:open={openSections.effects}>
           <button class="s-section-toggle" onclick={() => toggleSection('effects')}>
             <span class="s-chevron">{openSections.effects ? '\u25BE' : '\u25B8'}</span>
@@ -171,17 +189,17 @@
           </button>
           {#if openSections.effects}
             <div class="s-section-body">
-              {@render switchRow('Particles', archSettings.showParticles, (v) => (archSettings.showParticles = v))}
-              {#if archSettings.showParticles}
-                {@render sliderRow('Speed', archSettings.particleSpeed, 0.001, 0.02, 0.001, String((archSettings.particleSpeed * 1000).toFixed(0)), (v) => (archSettings.particleSpeed = v))}
-                {@render sliderRow('Density', archSettings.particleDensity, 1, 8, 1, String(archSettings.particleDensity), (v) => (archSettings.particleDensity = v))}
+              {@render switchRow('Particles', settings.showParticles, (v) => (settings.showParticles = v))}
+              {#if settings.showParticles}
+                {@render sliderRow('Speed', settings.particleSpeed, 0.001, 0.02, 0.001, String((settings.particleSpeed * 1000).toFixed(0)), (v) => (settings.particleSpeed = v))}
+                {@render sliderRow('Density', settings.particleDensity, 1, 8, 1, String(settings.particleDensity), (v) => (settings.particleDensity = v))}
               {/if}
-              {@render sliderRow('Link curve', archSettings.linkCurvature, 0, 0.5, 0.05, archSettings.linkCurvature.toFixed(2), (v) => (archSettings.linkCurvature = v))}
-              {@render sliderRow('Glow', archSettings.glowStrength, 0, 1, 0.05, (archSettings.glowStrength * 100).toFixed(0) + '%', (v) => (archSettings.glowStrength = v))}
-              {@render sliderRow('Resolution', archSettings.nodeResolution, 4, 32, 2, String(archSettings.nodeResolution), (v) => (archSettings.nodeResolution = v))}
+              {@render sliderRow('Link curve', settings.linkCurvature, 0, 0.5, 0.05, settings.linkCurvature.toFixed(2), (v) => (settings.linkCurvature = v))}
+              {@render sliderRow('Glow', settings.glowStrength, 0, 1, 0.05, (settings.glowStrength * 100).toFixed(0) + '%', (v) => (settings.glowStrength = v))}
+              {@render sliderRow('Resolution', settings.nodeResolution, 4, 32, 2, String(settings.nodeResolution), (v) => (settings.nodeResolution = v))}
               <div class="s-row">
                 <span class="s-label">Background</span>
-                <input type="color" class="s-color" bind:value={archSettings.bgColor} />
+                <input type="color" class="s-color" bind:value={settings.bgColor} />
               </div>
             </div>
           {/if}

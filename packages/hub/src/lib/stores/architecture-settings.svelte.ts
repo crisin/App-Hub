@@ -46,9 +46,11 @@ const DEFAULTS = {
   bgColor: '#0a0a0f',
   ambientLight: 0.6,
   glowStrength: 0.3,
-} as const
+}
 
-export type ArchSettings = { -readonly [K in keyof typeof DEFAULTS]: (typeof DEFAULTS)[K] }
+// No `as const` on DEFAULTS: it would narrow every field to its literal default
+// (spacing: 1.5) and make the sliders unable to assign any other value.
+export type ArchSettings = typeof DEFAULTS
 
 // ── Filters (separate objects for granular reactivity) ─────────
 
@@ -129,4 +131,19 @@ export function getVisibleEdgeTypes(): string[] {
   return Object.entries(edgeFilters)
     .filter(([_, v]) => v)
     .map(([k]) => k)
+}
+
+// ── More than one graph ──────────────────────────────────────
+
+/** The architecture graph's filters in the shape the graph components take */
+export const archFilters = { nodes: nodeFilters, edges: edgeFilters }
+
+/**
+ * Settings for another graph page (e.g. the kosmos map), so its layout and
+ * look do not fight with the architecture page over one shared object.
+ */
+export function createGraphSettings(overrides: Partial<ArchSettings> = {}) {
+  const defaults = { ...DEFAULTS, ...overrides } as ArchSettings
+  const settings: ArchSettings = $state({ ...defaults })
+  return { settings, reset: () => void Object.assign(settings, defaults) }
 }
